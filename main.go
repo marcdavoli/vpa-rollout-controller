@@ -34,6 +34,7 @@ const (
 	diffPercentTriggerDefault     = 10
 	cooldownPeriodDurationDefault = 10 * time.Minute
 	loopWaitTimeInSecondsDefault  = 10
+	PatchOperationFieldManager    = "flux-client-side-apply"
 )
 
 func main() {
@@ -44,14 +45,16 @@ func main() {
 	log := log.FromContext(ctx)
 
 	// Command-line flags with default values
-	diffPercentTriggerValue := flag.Int("diffPercentTrigger", diffPercentTriggerDefault, "Percentage difference to trigger rollout")
-	cooldownPeriodInMinutes := flag.Duration("cooldownPeriod", cooldownPeriodDurationDefault, "Cooldown period before triggering another rollout")
-	loopWaitTimeInSeconds := flag.Int("loopWaitTime", loopWaitTimeInSecondsDefault, "Time to wait between each loop iteration")
+	diffPercentTriggerDefault := flag.Int("diffPercentTrigger", diffPercentTriggerDefault, "Percentage difference to trigger rollout")
+	cooldownPeriodInMinutesDefault := flag.Duration("cooldownPeriod", cooldownPeriodDurationDefault, "Cooldown period before triggering another rollout")
+	loopWaitTimeInSecondsDefault := flag.Int("loopWaitTime", loopWaitTimeInSecondsDefault, "Time to wait between each loop iteration")
+	patchOperationFieldManagerDefault := flag.String("patchOperationFieldManager", PatchOperationFieldManager, "Field manager for patch operations")
 	flag.Parse()
-	diffPercentTrigger := *diffPercentTriggerValue
-	cooldownPeriodDuration := *cooldownPeriodInMinutes
-	loopWaitTimeDuration := time.Duration(*loopWaitTimeInSeconds) * time.Second
-	log.V(1).Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffPercentTrigger, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeDuration)
+	diffPercentTrigger := *diffPercentTriggerDefault
+	cooldownPeriodDuration := *cooldownPeriodInMinutesDefault
+	loopWaitTimeDuration := time.Duration(*loopWaitTimeInSecondsDefault) * time.Second
+	patchOperationFieldManager := *patchOperationFieldManagerDefault
+	log.V(1).Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffPercentTrigger, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeDuration, "patchOperationFieldManager", patchOperationFieldManager)
 
 	// Setup client-go
 	config, err := rest.InClusterConfig()
@@ -106,7 +109,7 @@ func main() {
 					continue
 				}
 				if cooldownHasElapsed {
-					err := triggerRollout(ctx, workload, dynamicClient)
+					err := triggerRollout(ctx, workload, dynamicClient, patchOperationFieldManager)
 					if err != nil {
 						log.Error(err, "Error triggering rollout:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 						continue

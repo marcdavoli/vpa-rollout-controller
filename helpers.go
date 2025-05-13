@@ -98,7 +98,7 @@ func cooldownHasElapsed(ctx context.Context, workload map[string]interface{}, co
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
 	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
-	timestamp, timestampFound, err := unstructured.NestedString(workload, "metadata", "annotations", "kubectl.kubernetes.io/restartedAt")
+	timestamp, timestampFound, err := unstructured.NestedString(workload, "spec", "template", "metadata", "annotations", "kubectl.kubernetes.io/restartedAt")
 	if err != nil {
 		log.Error(err, "Error getting timestamp", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
 		return false, err
@@ -126,7 +126,7 @@ func cooldownHasElapsed(ctx context.Context, workload map[string]interface{}, co
 }
 
 // Patches the workload resource to trigger a rollout using the annotation 'kubectl.kubernetes.io/restartedAt'
-func triggerRollout(ctx context.Context, workload map[string]interface{}, dynamicClient dynamic.Interface) error {
+func triggerRollout(ctx context.Context, workload map[string]interface{}, dynamicClient dynamic.Interface, patchOperationFieldManager string) error {
 
 	log := log.FromContext(ctx)
 
@@ -135,13 +135,13 @@ func triggerRollout(ctx context.Context, workload map[string]interface{}, dynami
 
 	currentTime := time.Now().Format(time.RFC3339)
 
-	patchData := fmt.Sprintf(`{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"%s"}}}`, currentTime)
+	patchData := fmt.Sprintf(`{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"%s"}}}}}`, currentTime)
 	gvr := schema.GroupVersionResource{
 		Group:    strings.SplitN(workload["apiVersion"].(string), "/", 2)[0],
 		Version:  strings.SplitN(workload["apiVersion"].(string), "/", 2)[1],
 		Resource: strings.ToLower(workload["kind"].(string) + "s"),
 	}
-	_, err := dynamicClient.Resource(gvr).Namespace(workloadNamespace.(string)).Patch(ctx, workloadName.(string), types.MergePatchType, []byte(patchData), metav1.PatchOptions{})
+	_, err := dynamicClient.Resource(gvr).Namespace(workloadNamespace.(string)).Patch(ctx, workloadName.(string), types.MergePatchType, []byte(patchData), metav1.PatchOptions{FieldManager: patchOperationFieldManager}, "spec", "template", "metadata", "annotations")
 	if err != nil {
 		log.Error(err, "Error triggering rollout on workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
 		return err
