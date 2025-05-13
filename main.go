@@ -55,9 +55,15 @@ func main() {
 		if err != nil {
 			panic(err.Error())
 		}
-		fmt.Printf("There are %d vpas in the cluster\n", len(vpas.Items))
+		fmt.Printf("There are %d VPAs in the cluster\n", len(vpas.Items))
 
 		for _, vpa := range vpas.Items {
+
+			if !vpaIsEligible(vpa) {
+				fmt.Printf("VPA is not eligible for processing: %s. Ensure its updateMode is set to 'Initial' and it has the annotation 'vpa-rollout.influxdata.io/enabled: true'.\n", vpa.Name)
+				continue
+			}
+
 			fmt.Printf("Processing VPA Name: %s, Namespace: %s, Target: %s/%s\n", vpa.Name, vpa.Namespace, vpa.Spec.TargetRef.Kind, vpa.Spec.TargetRef.Name)
 
 			workload, err := getTargetWorkload(ctx, vpa, dynamicClient)

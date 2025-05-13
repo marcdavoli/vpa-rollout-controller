@@ -125,3 +125,17 @@ func triggerRollout(ctx context.Context, workload map[string]interface{}, dynami
 	}
 
 }
+
+func vpaIsEligible(vpa v1.VerticalPodAutoscaler) bool {
+	// Check if the VPA updateMode is set to Initial
+	if vpa.Status.Recommendation != nil && vpa.Spec.UpdatePolicy.UpdateMode != nil && *vpa.Spec.UpdatePolicy.UpdateMode == v1.UpdateModeInitial {
+		// Check if the VPA has the annotation "vpa-rollout.influxdata.io/enabled" set to "true"
+		if vpa.Annotations != nil && vpa.Annotations["vpa-rollout.influxdata.io/enabled"] == "true" {
+			fmt.Printf("VPA %s is eligible for processing\n", vpa.Name)
+			return true
+		} else {
+			fmt.Printf("VPA %s is not eligible for processing\n", vpa.Name)
+		}
+	}
+	return false
+}
