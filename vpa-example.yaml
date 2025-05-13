@@ -1,0 +1,59 @@
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: example-vpa
+  namespace: default
+spec:
+  resourcePolicy:
+    containerPolicies:
+    - containerName: iox
+      controlledResources:
+      - cpu
+      - memory
+      maxAllowed:
+        cpu: "2"
+        memory: 2Gi
+      minAllowed:
+        cpu: 500m
+        memory: 200Mi
+    - containerName: '*'
+      mode: "Off"
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mydeployment
+  updatePolicy:
+    updateMode: Initial
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mydeployment
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: iox
+        image: busybox
+        resources:
+          requests:
+            cpu: "1"
+            memory: 1Gi
+          limits:
+            memory: 1Gi
+      - name: sidecar
+        image: debian
+        resources:
+          requests:
+            cpu: "1"
+            memory: 200Mi
+          limits:
+            memory: 200Mi
