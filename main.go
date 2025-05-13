@@ -51,6 +51,7 @@ func main() {
 	diffPercentTrigger := *diffPercentTriggerValue
 	cooldownPeriodDuration := *cooldownPeriodInMinutes
 	loopWaitTimeDuration := time.Duration(*loopWaitTimeInSeconds) * time.Second
+	log.V(1).Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffPercentTrigger, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeDuration)
 
 	// Setup client-go
 	config, err := rest.InClusterConfig()
@@ -110,8 +111,6 @@ func main() {
 						log.Error(err, "Error triggering rollout:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 						continue
 					}
-				} else {
-					log.V(1).Info("Cooldown period has not elapsed for VPA", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 				}
 			} else {
 				log.V(1).Info("No rollout needed for VPA's Target Workload", "VPAName", vpa.Name, "VPANamespace", vpa.Namespace, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)

@@ -22,32 +22,47 @@ func rolloutIsNeeded(ctx context.Context, vpa v1.VerticalPodAutoscaler, workload
 	log := log.FromContext(ctx)
 
 	if vpa.Status.Recommendation != nil {
-		for _, container := range vpa.Status.Recommendation.ContainerRecommendations {
-			if container.Target != nil {
-				log.V(1).Info("Container %s: CPU: %s, Memory: %s\n", container.ContainerName, container.Target.Cpu(), container.Target.Memory())
-				if container.Target.Cpu() != nil && container.Target.Memory() != nil {
+		for _, recommendation := range vpa.Status.Recommendation.ContainerRecommendations {
+			if recommendation.Target != nil {
+				log.V(1).Info("Processing VPA Recommendation", "ContainerName", recommendation.ContainerName, "ContainerTargetCPU", recommendation.Target.Cpu(), "ContainerTargetMemory", recommendation.Target.Memory())
+				if recommendation.Target.Cpu() != nil && recommendation.Target.Memory() != nil {
 
 					// Get the current CPU and Memory request from the target workload
-					workloadCPURequests, _, _ := unstructured.NestedString(workload, "spec", "template", "spec", "containers", "0", "resources", "requests", "cpu")
-					workloadMemoryRequests, _, _ := unstructured.NestedString(workload, "spec", "template", "spec", "containers", "0", "resources", "requests", "memory")
-					workloadCPURequestsQuantity, _ := resource.ParseQuantity(workloadCPURequests)
-					workloadMemoryRequestsQuantity, _ := resource.ParseQuantity(workloadMemoryRequests)
+					workloadContainers, _, _ := unstructured.NestedSlice(workload, "spec", "template", "spec", "containers")
+					for c := range workloadContainers {
+						if workloadContainers[c].(map[string]interface{})["name"] == recommendation.ContainerName {
+							containerResources, found, err := unstructured.NestedMap(workloadContainers[c].(map[string]interface{}), "resources")
+							if err != nil {
+								log.Error(err, "Error getting container resources")
+								continue
+							}
+							if !found {
+								log.V(1).Info("No resources found for container", "containerName", recommendation.ContainerName)
+								continue
+							}
+							workloadCPURequests, _, _ := unstructured.NestedString(containerResources, "requests", "cpu")
+							workloadMemoryRequests, _, _ := unstructured.NestedString(containerResources, "requests", "memory")
+							workloadCPURequestsQuantity, _ := resource.ParseQuantity(workloadCPURequests)
+							workloadMemoryRequestsQuantity, _ := resource.ParseQuantity(workloadMemoryRequests)
+							log.V(1).Info("Workload Spec values", "WorkloadCPURequests", workloadCPURequests, "WorkloadMemoryRequests", workloadMemoryRequests)
 
-					// Get the target CPU and Memory request from the VPA recommendation
-					vpaTargetCpuQuantity, _ := resource.ParseQuantity(container.Target.Cpu().String())
-					vpaTargetMemoryQuantity, _ := resource.ParseQuantity(container.Target.Memory().String())
+							// Get the target CPU and Memory request from the VPA recommendation
+							vpaTargetCpuQuantity, _ := resource.ParseQuantity(recommendation.Target.Cpu().String())
+							vpaTargetMemoryQuantity, _ := resource.ParseQuantity(recommendation.Target.Memory().String())
+							log.V(1).Info("VPA Status values", "VpaTargetCpuQuantity", vpaTargetCpuQuantity.String(), "VpaTargetMemoryQuantity", vpaTargetMemoryQuantity.String())
+							// Calculate the difference between current and target CPU and Memory requests
+							cpuDiff := workloadCPURequestsQuantity.AsApproximateFloat64() - vpaTargetCpuQuantity.AsApproximateFloat64()
+							cpuDiffPercent := cpuDiff / vpaTargetCpuQuantity.AsApproximateFloat64() * 100
+							memoryDiff := workloadMemoryRequestsQuantity.AsApproximateFloat64() - vpaTargetMemoryQuantity.AsApproximateFloat64()
+							memoryDiffPercent := memoryDiff / vpaTargetMemoryQuantity.AsApproximateFloat64() * 100
+							log.V(1).Info("Calculated diff between VPA Resource Target and Workload Resources", "CPUDiff", cpuDiff, "CPUDiffPercent", cpuDiffPercent, "MemoryDiff", memoryDiff, "MemoryDiffPercent", memoryDiffPercent)
 
-					// Calculate the difference between current and target CPU and Memory requests
-					cpuDiff := workloadCPURequestsQuantity.AsApproximateFloat64() - vpaTargetCpuQuantity.AsApproximateFloat64()
-					cpuDiffPercent := cpuDiff / vpaTargetCpuQuantity.AsApproximateFloat64() * 100
-					memoryDiff := workloadMemoryRequestsQuantity.AsApproximateFloat64() - vpaTargetMemoryQuantity.AsApproximateFloat64()
-					memoryDiffPercent := memoryDiff / vpaTargetMemoryQuantity.AsApproximateFloat64() * 100
-					log.V(1).Info("Calculated diff between VPA Resource Target and Workload Resources", "CPUDiff", cpuDiff, "CPUDiffPercent", cpuDiffPercent, "MemoryDiff", memoryDiff, "MemoryDiffPercent", memoryDiffPercent)
-
-					// If difference between current and target CPU or Memory is greater than the threshold, trigger a rollout
-					if cpuDiffPercent > float64(diffPercentTrigger) || memoryDiffPercent > float64(diffPercentTrigger) {
-						log.V(1).Info("Rollout needed for VPA Target Workload", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
-						return true, nil
+							// If difference between current and target CPU or Memory is greater than the threshold, trigger a rollout
+							if cpuDiffPercent > float64(diffPercentTrigger) || memoryDiffPercent > float64(diffPercentTrigger) {
+								log.V(1).Info("Rollout needed for VPA Target Workload", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
+								return true, nil
+							}
+						}
 					}
 				}
 			}
@@ -90,7 +105,7 @@ func cooldownHasElapsed(ctx context.Context, workload map[string]interface{}, co
 	}
 
 	if timestampFound {
-		log.V(1).Info("Workload %s, Last Restarted At: %s\n", workloadName, timestamp)
+		log.V(1).Info("Found timestamp", "WorkloadName", workloadName, "workloadNamespace", workloadNamespace, "lastRestartedAt", timestamp)
 		lastRestartedAt, err := time.Parse(time.RFC3339, timestamp)
 		if err != nil {
 			log.Error(err, "Error parsing timestamp for Workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "timestamp", timestamp)
