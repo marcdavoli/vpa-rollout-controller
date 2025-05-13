@@ -3,6 +3,8 @@ kind: VerticalPodAutoscaler
 metadata:
   name: example-vpa
   namespace: default
+  annotations:
+    vpa-rollout.influxdata.io/enabled: "true"
 spec:
   resourcePolicy:
     containerPolicies:

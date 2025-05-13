@@ -13,46 +13,50 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	v1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	"k8s.io/client-go/dynamic"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func rolloutIsNeeded(ctx context.Context, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}) bool {
+// Check if a rollout is needed based on the VPA recommendation and the workload's current resource requests
+func rolloutIsNeeded(ctx context.Context, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, diffPercentTrigger int) (bool, error) {
+
+	log := log.FromContext(ctx)
 
 	if vpa.Status.Recommendation != nil {
 		for _, container := range vpa.Status.Recommendation.ContainerRecommendations {
 			if container.Target != nil {
-				fmt.Printf("Container %s: CPU: %s, Memory: %s\n", container.ContainerName, container.Target.Cpu(), container.Target.Memory())
+				log.V(1).Info("Container %s: CPU: %s, Memory: %s\n", container.ContainerName, container.Target.Cpu(), container.Target.Memory())
 				if container.Target.Cpu() != nil && container.Target.Memory() != nil {
 
-					// get the current CPU and Memory request from the target workload
-					cpuRequests, _, _ := unstructured.NestedString(workload, "spec", "template", "spec", "containers", "0", "resources", "requests", "cpu")
-					memoryRequests, _, _ := unstructured.NestedString(workload, "spec", "template", "spec", "containers", "0", "resources", "requests", "memory")
-					fmt.Printf("Current CPU Requests: %s, Memory Requests: %s\n", cpuRequests, memoryRequests)
+					// Get the current CPU and Memory request from the target workload
+					workloadCPURequests, _, _ := unstructured.NestedString(workload, "spec", "template", "spec", "containers", "0", "resources", "requests", "cpu")
+					workloadMemoryRequests, _, _ := unstructured.NestedString(workload, "spec", "template", "spec", "containers", "0", "resources", "requests", "memory")
+					workloadCPURequestsQuantity, _ := resource.ParseQuantity(workloadCPURequests)
+					workloadMemoryRequestsQuantity, _ := resource.ParseQuantity(workloadMemoryRequests)
 
-					cpuRequestsQuantity, _ := resource.ParseQuantity(cpuRequests)
-					targetCpuQuantity, _ := resource.ParseQuantity(container.Target.Cpu().String())
-					memoryRequestsQuantity, _ := resource.ParseQuantity(memoryRequests)
-					targetMemoryQuantity, _ := resource.ParseQuantity(container.Target.Memory().String())
-					fmt.Printf("Target CPU Requests: %s, Target Memory: %s\n", targetCpuQuantity.String(), targetMemoryQuantity.String())
+					// Get the target CPU and Memory request from the VPA recommendation
+					vpaTargetCpuQuantity, _ := resource.ParseQuantity(container.Target.Cpu().String())
+					vpaTargetMemoryQuantity, _ := resource.ParseQuantity(container.Target.Memory().String())
 
 					// Calculate the difference between current and target CPU and Memory requests
-					cpuDiff := cpuRequestsQuantity.AsApproximateFloat64() - targetCpuQuantity.AsApproximateFloat64()
-					cpuDiffPercent := cpuDiff / targetCpuQuantity.AsApproximateFloat64() * 100
-					memoryDiff := memoryRequestsQuantity.AsApproximateFloat64() - targetMemoryQuantity.AsApproximateFloat64()
-					memoryDiffPercent := memoryDiff / targetMemoryQuantity.AsApproximateFloat64() * 100
-					fmt.Printf("CPU Diff: %f %f%%, Memory Diff: %f %f%%\n", cpuDiff, cpuDiffPercent, memoryDiff, memoryDiffPercent)
+					cpuDiff := workloadCPURequestsQuantity.AsApproximateFloat64() - vpaTargetCpuQuantity.AsApproximateFloat64()
+					cpuDiffPercent := cpuDiff / vpaTargetCpuQuantity.AsApproximateFloat64() * 100
+					memoryDiff := workloadMemoryRequestsQuantity.AsApproximateFloat64() - vpaTargetMemoryQuantity.AsApproximateFloat64()
+					memoryDiffPercent := memoryDiff / vpaTargetMemoryQuantity.AsApproximateFloat64() * 100
+					log.V(1).Info("Calculated diff between VPA Resource Target and Workload Resources", "CPUDiff", cpuDiff, "CPUDiffPercent", cpuDiffPercent, "MemoryDiff", memoryDiff, "MemoryDiffPercent", memoryDiffPercent)
 
-					// If difference between current and target CPU or Memory is greater than 10%
-					if cpuDiffPercent > diffPercentTrigger || memoryDiffPercent > diffPercentTrigger {
-						fmt.Printf("Rollout needed for VPA %s\n", vpa.Name)
-						return true
+					// If difference between current and target CPU or Memory is greater than the threshold, trigger a rollout
+					if cpuDiffPercent > float64(diffPercentTrigger) || memoryDiffPercent > float64(diffPercentTrigger) {
+						log.V(1).Info("Rollout needed for VPA Target Workload", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
+						return true, nil
 					}
 				}
 			}
 		}
 	} else {
-		fmt.Printf("No recommendation for VPA %s\n", vpa.Name)
+		log.V(1).Info("No recommendation for VPA", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
+		return false, nil
 	}
-	return false
+	return false, fmt.Errorf("error verifying if rollout is needed for VPA %s", vpa.Name)
 }
 
 // Get the target workload from the VPA spec
@@ -72,40 +76,45 @@ func getTargetWorkload(ctx context.Context, vpa v1.VerticalPodAutoscaler, dynami
 	return unstructuredObj.UnstructuredContent(), nil
 }
 
-// Check if the cooldown period has elapsed
-func cooldownHasElapsed(ctx context.Context, workload map[string]interface{}) bool {
+// Check if the cooldown period has elapsed, to avoid rolling too frequently
+func cooldownHasElapsed(ctx context.Context, workload map[string]interface{}, cooldownPeriodDuration time.Duration) (bool, error) {
 
+	log := log.FromContext(ctx)
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
+	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
 	timestamp, timestampFound, err := unstructured.NestedString(workload, "metadata", "annotations", "kubectl.kubernetes.io/restartedAt")
 	if err != nil {
-		fmt.Printf("Error getting timestamp: %v\n", err)
-		return false
+		log.Error(err, "Error getting timestamp", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return false, err
 	}
 
 	if timestampFound {
-		fmt.Printf("Workload %s, Last Restarted At: %s\n", workloadName, timestamp)
+		log.V(1).Info("Workload %s, Last Restarted At: %s\n", workloadName, timestamp)
 		lastRestartedAt, err := time.Parse(time.RFC3339, timestamp)
 		if err != nil {
-			fmt.Printf("Error parsing timestamp for Workload %s: %v\n", workloadName, err)
-			return false
+			log.Error(err, "Error parsing timestamp for Workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "timestamp", timestamp)
+			return false, err
 		}
-		if time.Since(lastRestartedAt) > cooldownPeriod {
-			fmt.Printf("Cooldown period has elapsed for workload %s, it has been %s\n", workloadName, time.Since(lastRestartedAt))
-			return true
+		if time.Since(lastRestartedAt) > cooldownPeriodDuration {
+			log.V(1).Info("Cooldown period has elapsed for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "elapsedTime", time.Since(lastRestartedAt), "cooldownPeriodDuration", cooldownPeriodDuration)
+			return true, nil
 		} else {
-			fmt.Printf("Cooldown period has not elapsed for workload %s, it has been %s\n", workloadName, time.Since(lastRestartedAt))
+			log.V(1).Info("Cooldown period has not elapsed for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "elapsedTime", time.Since(lastRestartedAt), "cooldownPeriodDuration", cooldownPeriodDuration)
 		}
 
 	} else {
-		fmt.Printf("No timestamp found for workload %s\n", workloadName)
-		return true
+		log.V(1).Info("No timestamp found for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return true, nil
 	}
-	return false
+	return false, nil
 }
 
-// Patches the workload to trigger a rollout using the annotation 'kubectl.kubernetes.io/restartedAt'
-func triggerRollout(ctx context.Context, workload map[string]interface{}, dynamicClient dynamic.Interface) {
+// Patches the workload resource to trigger a rollout using the annotation 'kubectl.kubernetes.io/restartedAt'
+func triggerRollout(ctx context.Context, workload map[string]interface{}, dynamicClient dynamic.Interface) error {
+
+	log := log.FromContext(ctx)
+
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
 	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
@@ -119,23 +128,29 @@ func triggerRollout(ctx context.Context, workload map[string]interface{}, dynami
 	}
 	_, err := dynamicClient.Resource(gvr).Namespace(workloadNamespace.(string)).Patch(ctx, workloadName.(string), types.MergePatchType, []byte(patchData), metav1.PatchOptions{})
 	if err != nil {
-		fmt.Printf("Error triggering rollout on workload %s: %v\n", workloadName, err)
+		log.Error(err, "Error triggering rollout on workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return err
 	} else {
-		fmt.Printf("Rollout triggered for workload %s\n", workloadName)
+		log.V(1).Info("Rollout triggered for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "timestamp", currentTime)
 	}
-
+	return nil
 }
 
-func vpaIsEligible(vpa v1.VerticalPodAutoscaler) bool {
+// Check if the VPA has the annotation "vpa-rollout.influxdata.io/enabled" set to "true" and that the VPA's updateMode is set to 'Initial'
+func vpaIsEligible(ctx context.Context, vpa v1.VerticalPodAutoscaler) bool {
+
+	log := log.FromContext(ctx)
 	// Check if the VPA updateMode is set to Initial
-	if vpa.Status.Recommendation != nil && vpa.Spec.UpdatePolicy.UpdateMode != nil && *vpa.Spec.UpdatePolicy.UpdateMode == v1.UpdateModeInitial {
+	if vpa.Spec.UpdatePolicy.UpdateMode != nil && *vpa.Spec.UpdatePolicy.UpdateMode == v1.UpdateModeInitial {
 		// Check if the VPA has the annotation "vpa-rollout.influxdata.io/enabled" set to "true"
 		if vpa.Annotations != nil && vpa.Annotations["vpa-rollout.influxdata.io/enabled"] == "true" {
-			fmt.Printf("VPA %s is eligible for processing\n", vpa.Name)
 			return true
 		} else {
-			fmt.Printf("VPA %s is not eligible for processing\n", vpa.Name)
+			log.V(1).Info("VPA is not eligible for processing", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name, "Reason", "Annotation 'vpa-rollout.influxdata.io/enabled' not set to 'true'")
+
 		}
+	} else {
+		log.V(1).Info("VPA is not eligible for processing", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name, "Reason", "UpdateMode is not set to 'Initial'")
 	}
 	return false
 }

@@ -19,24 +19,40 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"flag"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	vpa_clientset "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/clientset/versioned"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 const (
-	diffPercentTrigger = 10
-	cooldownPeriod     = 10 * time.Minute
-	loopWaitTime       = 10 * time.Second
+	diffPercentTriggerDefault     = 10
+	cooldownPeriodDurationDefault = 10 * time.Minute
+	loopWaitTimeInSecondsDefault  = 10
 )
 
 func main() {
+
 	ctx := context.Background()
 
+	log.SetLogger(zap.New(zap.UseDevMode(true)))
+	log := log.FromContext(ctx)
+
+	// Command-line flags with default values
+	diffPercentTriggerValue := flag.Int("diffPercentTrigger", diffPercentTriggerDefault, "Percentage difference to trigger rollout")
+	cooldownPeriodInMinutes := flag.Duration("cooldownPeriod", cooldownPeriodDurationDefault, "Cooldown period before triggering another rollout")
+	loopWaitTimeInSeconds := flag.Int("loopWaitTime", loopWaitTimeInSecondsDefault, "Time to wait between each loop iteration")
+	flag.Parse()
+	diffPercentTrigger := *diffPercentTriggerValue
+	cooldownPeriodDuration := *cooldownPeriodInMinutes
+	loopWaitTimeDuration := time.Duration(*loopWaitTimeInSeconds) * time.Second
+
+	// Setup client-go
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		panic(err.Error())
@@ -46,6 +62,7 @@ func main() {
 		panic(err.Error())
 	}
 
+	// Main loop
 	for {
 		vpaClient, err := vpa_clientset.NewForConfig(config)
 		if err != nil {
@@ -55,35 +72,52 @@ func main() {
 		if err != nil {
 			panic(err.Error())
 		}
-		fmt.Printf("There are %d VPAs in the cluster\n", len(vpas.Items))
+		log.V(1).Info("Processing list of VPAs in the cluster", "Total", len(vpas.Items))
 
 		for _, vpa := range vpas.Items {
 
-			if !vpaIsEligible(vpa) {
-				fmt.Printf("VPA is not eligible for processing: %s. Ensure its updateMode is set to 'Initial' and it has the annotation 'vpa-rollout.influxdata.io/enabled: true'.\n", vpa.Name)
+			// Check if the VPA is eligible for processing
+			if !vpaIsEligible(ctx, vpa) {
 				continue
 			}
+			log.V(1).Info("Processing VPA", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
 
-			fmt.Printf("Processing VPA Name: %s, Namespace: %s, Target: %s/%s\n", vpa.Name, vpa.Namespace, vpa.Spec.TargetRef.Kind, vpa.Spec.TargetRef.Name)
-
+			// Get the VPA's target workload resource
 			workload, err := getTargetWorkload(ctx, vpa, dynamicClient)
 			if err != nil {
-				fmt.Printf("Error fetching target workload: %v\n", err)
+				log.Error(err, "Error fetching target workload:")
 				continue
 			}
+			workloadName := workload["metadata"].(map[string]interface{})["name"]
+			workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
-			if rolloutIsNeeded(ctx, vpa, workload) {
-				fmt.Printf("Rollout is needed for VPA %s\n", vpa.Name)
-				if cooldownHasElapsed(ctx, workload) {
-					triggerRollout(ctx, workload, dynamicClient)
+			// Check if a rollout is needed
+			rolloutIsNeeded, err := rolloutIsNeeded(ctx, vpa, workload, diffPercentTrigger)
+			if err != nil {
+				log.Error(err, "Error checking if rollout is needed:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+				continue
+			}
+			if rolloutIsNeeded {
+				// Check if the cooldown period has elapsed
+				cooldownHasElapsed, err := cooldownHasElapsed(ctx, workload, cooldownPeriodDuration)
+				if err != nil {
+					log.Error(err, "Error checking cooldown period:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+					continue
+				}
+				if cooldownHasElapsed {
+					err := triggerRollout(ctx, workload, dynamicClient)
+					if err != nil {
+						log.Error(err, "Error triggering rollout:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+						continue
+					}
 				} else {
-					fmt.Printf("Cooldown period has not elapsed for VPA %s\n", vpa.Name)
+					log.V(1).Info("Cooldown period has not elapsed for VPA", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 				}
 			} else {
-				fmt.Printf("No rollout needed for VPA's Target Workload %s\n", vpa.Name)
+				log.V(1).Info("No rollout needed for VPA's Target Workload", "VPAName", vpa.Name, "VPANamespace", vpa.Namespace, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 			}
 		}
 
-		time.Sleep(loopWaitTime)
+		time.Sleep(loopWaitTimeDuration)
 	}
 }
