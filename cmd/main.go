@@ -123,8 +123,6 @@ func main() {
 						continue
 					}
 				}
-			} else {
-				log.V(1).Info("No rollout needed for VPA's Target Workload", "VPAName", vpa.Name, "VPANamespace", vpa.Namespace, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 			}
 		}
 

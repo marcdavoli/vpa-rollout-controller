@@ -3,13 +3,13 @@ package utils
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	v1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
@@ -57,41 +57,42 @@ func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 				if recommendation.Target.Cpu() != nil && recommendation.Target.Memory() != nil {
 
 					// Get the current CPU and Memory request from the target workload
-					workloadContainers, _, _ := unstructured.NestedSlice(workload, "spec", "template", "spec", "containers")
-					for c := range workloadContainers {
-						if workloadContainers[c].(map[string]interface{})["name"] == recommendation.ContainerName {
-							containerResources, found, err := unstructured.NestedMap(workloadContainers[c].(map[string]interface{}), "resources")
-							if err != nil {
-								log.Error(err, "Error getting container resources")
-								continue
-							}
-							if !found {
-								log.V(1).Info("No resources found for container", "containerName", recommendation.ContainerName)
-								continue
-							}
-							workloadCPURequests, _, _ := unstructured.NestedString(containerResources, "requests", "cpu")
-							workloadMemoryRequests, _, _ := unstructured.NestedString(containerResources, "requests", "memory")
-							workloadCPURequestsQuantity, _ := resource.ParseQuantity(workloadCPURequests)
-							workloadMemoryRequestsQuantity, _ := resource.ParseQuantity(workloadMemoryRequests)
-							log.V(1).Info("Workload Spec values", "WorkloadCPURequests", workloadCPURequests, "WorkloadMemoryRequests", workloadMemoryRequests)
-
-							// Get the target CPU and Memory request from the VPA recommendation
-							vpaTargetCpuQuantity, _ := resource.ParseQuantity(recommendation.Target.Cpu().String())
-							vpaTargetMemoryQuantity, _ := resource.ParseQuantity(recommendation.Target.Memory().String())
-							log.V(1).Info("VPA Status values", "VpaTargetCpuQuantity", vpaTargetCpuQuantity.String(), "VpaTargetMemoryQuantity", vpaTargetMemoryQuantity.String())
-							// Calculate the difference between current and target CPU and Memory requests
-							cpuDiff := workloadCPURequestsQuantity.AsApproximateFloat64() - vpaTargetCpuQuantity.AsApproximateFloat64()
-							cpuDiffPercent := cpuDiff / vpaTargetCpuQuantity.AsApproximateFloat64() * 100
-							memoryDiff := workloadMemoryRequestsQuantity.AsApproximateFloat64() - vpaTargetMemoryQuantity.AsApproximateFloat64()
-							memoryDiffPercent := memoryDiff / vpaTargetMemoryQuantity.AsApproximateFloat64() * 100
-							log.V(1).Info("Calculated diff between VPA Resource Target and Workload Resources", "CPUDiff", cpuDiff, "CPUDiffPercent", cpuDiffPercent, "MemoryDiff", memoryDiff, "MemoryDiffPercent", memoryDiffPercent)
-
-							// If difference between current and target CPU or Memory is greater than the threshold, trigger a rollout
-							if cpuDiffPercent > float64(effectiveDiffPercentTrigger) || memoryDiffPercent > float64(effectiveDiffPercentTrigger) {
-								log.V(1).Info("Rollout needed for VPA Target Workload", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
-								return true, nil
-							}
+					podList, err := getTargetWorkloadPods(ctx, workload, clientset)
+					if err != nil {
+						log.Error(err, "Error getting pods for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+						return false, err
+					}
+					// We can pick the first pod in the list, since we've previous verified that the resources are the same across all pods
+					pod := podList.Items[0]
+					var containerCPU, containerMemory *resource.Quantity
+					for _, container := range pod.Spec.Containers {
+						if container.Name == recommendation.ContainerName {
+							log.V(1).Info("Found container in pod spec", "ContainerName", container.Name)
+							containerResources := container.Resources
+							containerCPU = containerResources.Requests.Cpu()
+							containerMemory = containerResources.Requests.Memory()
+							log.V(1).Info("Container Spec values", "ContainerCPURequests", containerCPU.String(), "ContainerMemoryRequests", containerMemory.String())
 						}
+					}
+
+					// Get the target CPU and Memory request from the VPA recommendation
+					vpaTargetCpuQuantity, _ := resource.ParseQuantity(recommendation.Target.Cpu().String())
+					vpaTargetMemoryQuantity, _ := resource.ParseQuantity(recommendation.Target.Memory().String())
+					log.V(1).Info("VPA Status values", "VpaTargetCpuQuantity", vpaTargetCpuQuantity.String(), "VpaTargetMemoryQuantity", vpaTargetMemoryQuantity.String())
+					// Calculate the difference between current and target CPU and Memory requests
+					cpuDiff := math.Abs(containerCPU.AsApproximateFloat64() - vpaTargetCpuQuantity.AsApproximateFloat64())
+					cpuDiffPercent := cpuDiff / vpaTargetCpuQuantity.AsApproximateFloat64() * 100
+					memoryDiff := math.Abs(containerMemory.AsApproximateFloat64() - vpaTargetMemoryQuantity.AsApproximateFloat64())
+					memoryDiffPercent := memoryDiff / vpaTargetMemoryQuantity.AsApproximateFloat64() * 100
+					log.V(1).Info("Calculated diff between VPA Resource Target and Workload Resources", "CPUDiff", cpuDiff, "CPUDiffPercent", cpuDiffPercent, "MemoryDiff", memoryDiff, "MemoryDiffPercent", memoryDiffPercent)
+
+					// If difference between current and target CPU or Memory is greater than the threshold, trigger a rollout
+					if cpuDiffPercent > float64(effectiveDiffPercentTrigger) || memoryDiffPercent > float64(effectiveDiffPercentTrigger) {
+						log.V(1).Info("Rollout needed for VPA Target Workload", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name, "cpuDiffPercent", cpuDiffPercent, "memoryDiffPercent", memoryDiffPercent, "diffPercentTrigger", effectiveDiffPercentTrigger)
+						return true, nil
+					} else {
+						log.V(1).Info("No rollout needed for VPA Target Workload", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
+						return false, nil
 					}
 				}
 			}
