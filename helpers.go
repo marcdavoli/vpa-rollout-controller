@@ -124,7 +124,7 @@ func getTargetWorkload(ctx context.Context, vpa v1.VerticalPodAutoscaler, dynami
 }
 
 // Check if the cooldown period has elapsed, to avoid rolling too frequently
-func cooldownHasElapsed(ctx context.Context, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, cooldownPeriodDuration time.Duration) (bool, error) {
+func cooldownHasElapsed(ctx context.Context, clientset kubernetes.Interface, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, cooldownPeriodDuration time.Duration) (bool, error) {
 
 	log := log.FromContext(ctx)
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
@@ -148,6 +148,20 @@ func cooldownHasElapsed(ctx context.Context, vpa v1.VerticalPodAutoscaler, workl
 	if err != nil {
 		log.Error(err, "Error getting timestamp", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
 		return false, err
+	}
+
+	// Check that the workload's pods' age is greater than the cooldown period
+	podList, err := getTargetWorkloadPods(ctx, workload, clientset)
+	if err != nil {
+		log.Error(err, "Error getting pods for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return false, err
+	}
+	for _, pod := range podList.Items {
+		podAge := time.Since(pod.GetCreationTimestamp().Time)
+		if podAge < effectiveCooldownPeriodDuration {
+			log.V(1).Info("Workload's Pod age is less than cooldown period", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "podName", pod.Name, "podNamespace", pod.Namespace, "podAge", podAge.Round(time.Second), "cooldownPeriodDuration", effectiveCooldownPeriodDuration)
+			return false, nil
+		}
 	}
 
 	if timestampFound {
@@ -253,6 +267,7 @@ func workloadPodsAreHealthy(ctx context.Context, workload map[string]interface{}
 		log.Error(err, "Error getting pods for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
 		return false, err
 	}
+
 	// Ensure there are pods before proceeding
 	if len(podList.Items) == 0 {
 		log.V(1).Info("No pods found for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)

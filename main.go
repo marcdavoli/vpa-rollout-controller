@@ -113,7 +113,7 @@ func main() {
 			}
 			if rolloutIsNeeded {
 				// Check if the cooldown period has elapsed
-				cooldownHasElapsed, err := cooldownHasElapsed(ctx, vpa, workload, cooldownPeriodDuration)
+				cooldownHasElapsed, err := cooldownHasElapsed(ctx, clientset, vpa, workload, cooldownPeriodDuration)
 				if err != nil {
 					log.Error(err, "Error checking cooldown period:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 					continue
