@@ -31,10 +31,13 @@ import (
 )
 
 const (
-	diffPercentTriggerDefault     = 10
-	cooldownPeriodDurationDefault = 10 * time.Minute
-	loopWaitTimeInSecondsDefault  = 10
-	PatchOperationFieldManager    = "flux-client-side-apply"
+	diffPercentTriggerDefault       = 10
+	cooldownPeriodDurationDefault   = 10 * time.Minute
+	loopWaitTimeInSecondsDefault    = 10
+	patchOperationFieldManager      = "flux-client-side-apply"
+	vpaAnnotationEnabled            = "vpa-rollout.influxdata.io/enabled"
+	vpaAnnotationCooldownPeriod     = "vpa-rollout.influxdata.io/cooldown-period"
+	vpaAnnotationDiffPercentTrigger = "vpa-rollout.influxdata.io/diff-percent-trigger"
 )
 
 func main() {
@@ -48,7 +51,7 @@ func main() {
 	diffPercentTriggerDefault := flag.Int("diffPercentTrigger", diffPercentTriggerDefault, "Percentage difference to trigger rollout")
 	cooldownPeriodInMinutesDefault := flag.Duration("cooldownPeriod", cooldownPeriodDurationDefault, "Cooldown period before triggering another rollout")
 	loopWaitTimeInSecondsDefault := flag.Int("loopWaitTime", loopWaitTimeInSecondsDefault, "Time to wait between each loop iteration")
-	patchOperationFieldManagerDefault := flag.String("patchOperationFieldManager", PatchOperationFieldManager, "Field manager for patch operations")
+	patchOperationFieldManagerDefault := flag.String("patchOperationFieldManager", patchOperationFieldManager, "Field manager for patch operations")
 	flag.Parse()
 	diffPercentTrigger := *diffPercentTriggerDefault
 	cooldownPeriodDuration := *cooldownPeriodInMinutesDefault
@@ -103,7 +106,7 @@ func main() {
 			}
 			if rolloutIsNeeded {
 				// Check if the cooldown period has elapsed
-				cooldownHasElapsed, err := cooldownHasElapsed(ctx, workload, cooldownPeriodDuration)
+				cooldownHasElapsed, err := cooldownHasElapsed(ctx, vpa, workload, cooldownPeriodDuration)
 				if err != nil {
 					log.Error(err, "Error checking cooldown period:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 					continue

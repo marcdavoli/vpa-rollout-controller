@@ -92,11 +92,30 @@ func getTargetWorkload(ctx context.Context, vpa v1.VerticalPodAutoscaler, dynami
 }
 
 // Check if the cooldown period has elapsed, to avoid rolling too frequently
-func cooldownHasElapsed(ctx context.Context, workload map[string]interface{}, cooldownPeriodDuration time.Duration) (bool, error) {
+func cooldownHasElapsed(ctx context.Context, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, cooldownPeriodDuration time.Duration) (bool, error) {
 
 	log := log.FromContext(ctx)
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
 	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
+
+	// Override the cooldown period duration if the VPA annotation is specified
+	var effectiveCooldownPeriodDuration time.Duration
+	if vpa.Annotations != nil {
+		if vpa.Annotations[vpaAnnotationCooldownPeriod] != "" {
+			overridenCooldownPeriodDuration, err := time.ParseDuration(vpa.Annotations[vpaAnnotationCooldownPeriod])
+			if err != nil {
+				log.Error(err, "Error parsing cooldown period duration from VPA annotation", "VPAName", vpa.Name, "VPANameSpace", vpa.Namespace)
+				return false, err
+			}
+			effectiveCooldownPeriodDuration = overridenCooldownPeriodDuration
+		} else {
+			effectiveCooldownPeriodDuration = cooldownPeriodDuration
+		}
+	} else {
+		effectiveCooldownPeriodDuration = cooldownPeriodDuration
+	}
+
+	log.V(1).Info("Effective cooldown period duration", "VPAName", vpa.Name, "VPANameSpace", vpa.Namespace, "cooldownPeriodDuration", effectiveCooldownPeriodDuration)
 
 	timestamp, timestampFound, err := unstructured.NestedString(workload, "spec", "template", "metadata", "annotations", "kubectl.kubernetes.io/restartedAt")
 	if err != nil {
@@ -111,7 +130,7 @@ func cooldownHasElapsed(ctx context.Context, workload map[string]interface{}, co
 			log.Error(err, "Error parsing timestamp for Workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "timestamp", timestamp)
 			return false, err
 		}
-		if time.Since(lastRestartedAt) > cooldownPeriodDuration {
+		if time.Since(lastRestartedAt) > effectiveCooldownPeriodDuration {
 			log.V(1).Info("Cooldown period has elapsed for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "elapsedTime", time.Since(lastRestartedAt), "cooldownPeriodDuration", cooldownPeriodDuration)
 			return true, nil
 		} else {
@@ -134,31 +153,30 @@ func triggerRollout(ctx context.Context, workload map[string]interface{}, dynami
 	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
 	currentTime := time.Now().Format(time.RFC3339)
-
 	patchData := fmt.Sprintf(`{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"%s"}}}}}`, currentTime)
 	gvr := schema.GroupVersionResource{
 		Group:    strings.SplitN(workload["apiVersion"].(string), "/", 2)[0],
 		Version:  strings.SplitN(workload["apiVersion"].(string), "/", 2)[1],
 		Resource: strings.ToLower(workload["kind"].(string) + "s"),
 	}
-	_, err := dynamicClient.Resource(gvr).Namespace(workloadNamespace.(string)).Patch(ctx, workloadName.(string), types.MergePatchType, []byte(patchData), metav1.PatchOptions{FieldManager: patchOperationFieldManager}, "spec", "template", "metadata", "annotations")
+	_, err := dynamicClient.Resource(gvr).Namespace(workloadNamespace.(string)).Patch(ctx, workloadName.(string), types.MergePatchType, []byte(patchData), metav1.PatchOptions{FieldManager: patchOperationFieldManager})
 	if err != nil {
-		log.Error(err, "Error triggering rollout on workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		log.Error(err, "Error triggering rollout on workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "Group", gvr.Group, "Version", gvr.Version, "Resource", gvr.Resource, "patchData", patchData)
 		return err
 	} else {
-		log.V(1).Info("Rollout triggered for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "timestamp", currentTime)
+		log.V(1).Info("Rollout triggered successfully", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "timestamp", currentTime)
 	}
 	return nil
 }
 
-// Check if the VPA has the annotation "vpa-rollout.influxdata.io/enabled" set to "true" and that the VPA's updateMode is set to 'Initial'
+// Check if the VPA has the "enabled" annotation set to "true" and that the VPA's updateMode is set to 'Initial'
 func vpaIsEligible(ctx context.Context, vpa v1.VerticalPodAutoscaler) bool {
 
 	log := log.FromContext(ctx)
 	// Check if the VPA updateMode is set to Initial
 	if vpa.Spec.UpdatePolicy.UpdateMode != nil && *vpa.Spec.UpdatePolicy.UpdateMode == v1.UpdateModeInitial {
 		// Check if the VPA has the annotation "vpa-rollout.influxdata.io/enabled" set to "true"
-		if vpa.Annotations != nil && vpa.Annotations["vpa-rollout.influxdata.io/enabled"] == "true" {
+		if vpa.Annotations != nil && vpa.Annotations[vpaAnnotationEnabled] == "true" {
 			return true
 		} else {
 			log.V(1).Info("VPA is not eligible for processing", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name, "Reason", "Annotation 'vpa-rollout.influxdata.io/enabled' not set to 'true'")
