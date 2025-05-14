@@ -25,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	vpa_clientset "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/client/clientset/versioned"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -70,6 +71,10 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
 
 	// Main loop
 	for {
@@ -101,7 +106,7 @@ func main() {
 			workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
 			// Check if a rollout is needed
-			rolloutIsNeeded, err := rolloutIsNeeded(ctx, vpa, workload, diffPercentTrigger)
+			rolloutIsNeeded, err := rolloutIsNeeded(ctx, clientset, vpa, workload, diffPercentTrigger)
 			if err != nil {
 				log.Error(err, "Error checking if rollout is needed:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 				continue

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -21,9 +22,22 @@ import (
 )
 
 // Check if a rollout is needed based on the VPA recommendation and the workload's current resource requests
-func rolloutIsNeeded(ctx context.Context, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, diffPercentTrigger int) (bool, error) {
+func rolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, diffPercentTrigger int) (bool, error) {
 
 	log := log.FromContext(ctx)
+	workloadName := workload["metadata"].(map[string]interface{})["name"]
+	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
+
+	// Ensure the workload's pods are healthy before proceeding
+	healthy, err := workloadPodsAreHealthy(ctx, workload, clientset)
+	if err != nil {
+		log.Error(err, "Error checking workload pods health", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return false, err
+	}
+	if !healthy {
+		log.V(1).Info("Workload pods are not healthy, skipping rollout", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return false, nil
+	}
 
 	// Override the diffPercentTrigger if the VPA annotation is specified
 	var effectiveDiffPercentTrigger int
@@ -225,4 +239,54 @@ func getTargetWorkloadPods(ctx context.Context, workload map[string]interface{},
 	}
 
 	return podList, nil
+}
+
+func workloadPodsAreHealthy(ctx context.Context, workload map[string]interface{}, clientset kubernetes.Interface) (bool, error) {
+
+	log := log.FromContext(ctx)
+	workloadName := workload["metadata"].(map[string]interface{})["name"]
+	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
+
+	// Get the list of pods for the target workload
+	podList, err := getTargetWorkloadPods(ctx, workload, clientset)
+	if err != nil {
+		log.Error(err, "Error getting pods for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return false, err
+	}
+	// Ensure there are pods before proceeding
+	if len(podList.Items) == 0 {
+		log.V(1).Info("No pods found for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return false, nil
+	}
+
+	// Store the resources block for each container across all the pods
+	containerResourcesRequestsMap := make(map[string]corev1.ResourceList)
+
+	for _, pod := range podList.Items {
+		// If any of the pods are not in Running state, do not trigger a rollout
+		if pod.Status.Phase != corev1.PodRunning {
+			log.V(1).Info("At least one of the target workload's Pods is not in Running state", "podName", pod.Name, "podNamespace", pod.Namespace, "podStatus", pod.Status.Phase, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+			return false, nil
+		}
+		// If one of the containers in the pod is not Ready, do not trigger a rollout
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			if !containerStatus.Ready {
+				log.V(1).Info("At least one of the target workload's Pods's containers is not Ready", "podName", pod.Name, "podNamespace", pod.Namespace, "containerName", containerStatus.Name, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+				return false, nil
+			}
+		}
+
+		// If a given container doesn't have the same resource requests across all the pods, do not trigger a rollout
+		for _, container := range pod.Spec.Containers {
+			containerResourcesRequests := container.Resources.Requests
+			if containerResourcesRequestsMap[container.Name] != nil && !reflect.DeepEqual(containerResourcesRequestsMap[container.Name], containerResourcesRequests) {
+				log.V(1).Info("At least one of the target workload's Pods's containers has different resource requests", "podName", pod.Name, "podNamespace", pod.Namespace, "containerName", container.Name, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+				return false, nil
+			}
+			containerResourcesRequestsMap[container.Name] = containerResourcesRequests
+		}
+
+	}
+
+	return true, nil
 }
