@@ -11,7 +11,7 @@ kubectl delete pod vpa-rollout-controller || true
 
 # Build the Go application and build and push a Docker image to local registry
 echo "Building the Go application and Docker image..."
-GOOS=linux GOARCH=amd64 go build -o ./app .
+GOOS=linux GOARCH=amd64 go build -o ./app ./cmd/main.go
 docker build -t in-cluster .
 random_tag=$(openssl rand -hex 4)
 docker tag in-cluster localhost:5001/in-cluster:${random_tag}

@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 )
 
 // Check if the cooldown period has elapsed, to avoid rolling too frequently
-func cooldownHasElapsed(ctx context.Context, clientset kubernetes.Interface, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, cooldownPeriodDuration time.Duration) (bool, error) {
+func CooldownHasElapsed(ctx context.Context, clientset kubernetes.Interface, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, cooldownPeriodDuration time.Duration) (bool, error) {
 
 	log := log.FromContext(ctx)
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
@@ -19,8 +19,8 @@ func cooldownHasElapsed(ctx context.Context, clientset kubernetes.Interface, vpa
 
 	// Override the cooldown period duration if the VPA annotation is specified
 	var effectiveCooldownPeriodDuration time.Duration
-	if vpa.Annotations != nil && vpa.Annotations[vpaAnnotationCooldownPeriod] != "" {
-		overridenCooldownPeriodDuration, err := time.ParseDuration(vpa.Annotations[vpaAnnotationCooldownPeriod])
+	if vpa.Annotations != nil && vpa.Annotations[VPAAnnotationCooldownPeriod] != "" {
+		overridenCooldownPeriodDuration, err := time.ParseDuration(vpa.Annotations[VPAAnnotationCooldownPeriod])
 		if err != nil {
 			log.Error(err, "Error parsing cooldown period duration from VPA annotation", "VPAName", vpa.Name, "VPANameSpace", vpa.Namespace)
 			return false, err

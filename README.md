@@ -39,24 +39,10 @@ This app is meant to run as a pod inside a Kubernetes cluster, for which it will
 
 ### Usage
 
-CLI flags
-
-```yaml
-args:
-- '--cooldownPeriodMinutes 10'
-- '--diffPercentTrigger 10'
-- '--loopWaitTimeSeconds 10'
-```
+TBD
 
 ## TO DO
-- New annotation on VPA for overriding the cooldown period (takes precedence over default value & CLI flag)
-- New annotation on VPA for overriding the diffPercentTrigger on a specific VPA (takes precedence over default value & CLI flag)
-- The cooldown period should still be in effect if the youngest pod's age is less than it?
-- Getting the workload requests should be done on running pods, not workload resource itself: because the mutating webhook doesn't update the workload manifest
-  - This way if there are no running pods, it won't cause a rollout
-  - If there are pods with different sizes, how do we decide if we do a rollout? --> Maybe we check if a rollout is in progress? But how?
-    - If pod sizes differ, it does mean that a rollout is in progress and we should skip.
-  - Or should we just update the workload and then we can continue to rely on the workload resources, not on pods?
+- Getting the workload requests should be done on running pods, not workload resource itself, because the mutating webhook doesn't update the workload manifest
 
 ## CLI Flags
 

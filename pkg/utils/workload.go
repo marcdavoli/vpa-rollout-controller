@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"context"
@@ -18,13 +18,13 @@ import (
 )
 
 // Check if the VPA has the "enabled" annotation set to "true" and that the VPA's updateMode is set to 'Initial'
-func vpaIsEligible(ctx context.Context, vpa v1.VerticalPodAutoscaler) bool {
+func VPAIsEligible(ctx context.Context, vpa v1.VerticalPodAutoscaler) bool {
 
 	log := log.FromContext(ctx)
 	// Check if the VPA updateMode is set to Initial
 	if vpa.Spec.UpdatePolicy.UpdateMode != nil && *vpa.Spec.UpdatePolicy.UpdateMode == v1.UpdateModeInitial {
 		// Check if the VPA has the annotation "vpa-rollout.influxdata.io/enabled" set to "true"
-		if vpa.Annotations != nil && vpa.Annotations[vpaAnnotationEnabled] == "true" {
+		if vpa.Annotations != nil && vpa.Annotations[VPAAnnotationEnabled] == "true" {
 			return true
 		} else {
 			log.V(1).Info("VPA is not eligible for processing", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name, "Reason", "Annotation 'vpa-rollout.influxdata.io/enabled' not set to 'true'")
@@ -37,7 +37,7 @@ func vpaIsEligible(ctx context.Context, vpa v1.VerticalPodAutoscaler) bool {
 }
 
 // Get the target workload from the VPA spec
-func getTargetWorkload(ctx context.Context, vpa v1.VerticalPodAutoscaler, dynamicClient dynamic.Interface) (map[string]interface{}, error) {
+func GetTargetWorkload(ctx context.Context, vpa v1.VerticalPodAutoscaler, dynamicClient dynamic.Interface) (map[string]interface{}, error) {
 
 	vpaTargetGroupVersionResource := schema.GroupVersionResource{
 		Group:    strings.SplitN(vpa.Spec.TargetRef.APIVersion, "/", 2)[0],

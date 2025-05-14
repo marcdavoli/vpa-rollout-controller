@@ -5,10 +5,12 @@ metadata:
   namespace: default
   annotations:
     vpa-rollout.influxdata.io/enabled: "true"
+    vpa-rollout.influxdata.io/diff-percent-trigger: "22"
+    vpa-rollout.influxdata.io/cooldown-period: "5m"
 spec:
   resourcePolicy:
     containerPolicies:
-    - containerName: iox
+    - containerName: vote
       controlledResources:
       - cpu
       - memory
@@ -43,19 +45,22 @@ spec:
         app: myapp
     spec:
       containers:
-      - name: iox
-        image: busybox
+      - image: dockersamples/examplevotingapp_vote
+        name: vote
+        ports:
+        - containerPort: 80
+          name: vote
         resources:
           requests:
             cpu: "1"
             memory: 1Gi
           limits:
             memory: 1Gi
-      - name: sidecar
-        image: debian
-        resources:
-          requests:
-            cpu: "1"
-            memory: 200Mi
-          limits:
-            memory: 200Mi
+      # - name: sidecar
+      #   image: dockersamples/examplevotingapp_vote
+      #   resources:
+      #     requests:
+      #       cpu: "1"
+      #       memory: 200Mi
+      #     limits:
+      #       memory: 200Mi

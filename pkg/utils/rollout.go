@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 )
 
 // Check if a rollout is needed based on the VPA recommendation and the workload's pods' current resource requests
-func rolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, diffPercentTrigger int) (bool, error) {
+func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, diffPercentTrigger int) (bool, error) {
 
 	log := log.FromContext(ctx)
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
@@ -38,8 +38,8 @@ func rolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 
 	// Override the diffPercentTrigger if the VPA annotation is specified
 	var effectiveDiffPercentTrigger int
-	if vpa.Annotations != nil && vpa.Annotations[vpaAnnotationDiffPercentTrigger] != "" {
-		overridenDiffPercentTrigger, err := strconv.Atoi(vpa.Annotations[vpaAnnotationDiffPercentTrigger])
+	if vpa.Annotations != nil && vpa.Annotations[VPAAnnotationDiffPercentTrigger] != "" {
+		overridenDiffPercentTrigger, err := strconv.Atoi(vpa.Annotations[VPAAnnotationDiffPercentTrigger])
 		if err != nil {
 			log.Error(err, "Error parsing diffPercentTrigger from VPA annotation", "VPAName", vpa.Name, "VPANameSpace", vpa.Namespace)
 			return false, err
@@ -104,7 +104,7 @@ func rolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 }
 
 // Patches the workload resource to trigger a rollout using the annotation 'kubectl.kubernetes.io/restartedAt'
-func triggerRollout(ctx context.Context, workload map[string]interface{}, dynamicClient dynamic.Interface, patchOperationFieldManager string) error {
+func TriggerRollout(ctx context.Context, workload map[string]interface{}, dynamicClient dynamic.Interface, patchOperationFieldManager string) error {
 
 	log := log.FromContext(ctx)
 

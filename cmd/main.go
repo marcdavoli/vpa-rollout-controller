@@ -29,6 +29,8 @@ import (
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	"github.com/influxdata/vpa-rollout-controller/pkg/utils"
 )
 
 const (
@@ -37,10 +39,6 @@ const (
 	cooldownPeriodDurationDefault = 15 * time.Minute
 	loopWaitTimeInSecondsDefault  = 10
 	patchOperationFieldManager    = "flux-client-side-apply"
-	// Annotations for VPA
-	vpaAnnotationEnabled            = "vpa-rollout.influxdata.io/enabled"
-	vpaAnnotationCooldownPeriod     = "vpa-rollout.influxdata.io/cooldown-period"
-	vpaAnnotationDiffPercentTrigger = "vpa-rollout.influxdata.io/diff-percent-trigger"
 )
 
 func main() {
@@ -91,13 +89,13 @@ func main() {
 		for _, vpa := range vpas.Items {
 
 			// Check if the VPA is eligible for processing
-			if !vpaIsEligible(ctx, vpa) {
+			if !utils.VPAIsEligible(ctx, vpa) {
 				continue
 			}
 			log.V(1).Info("Processing VPA", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
 
 			// Get the VPA's target workload resource
-			workload, err := getTargetWorkload(ctx, vpa, dynamicClient)
+			workload, err := utils.GetTargetWorkload(ctx, vpa, dynamicClient)
 			if err != nil {
 				log.Error(err, "Error fetching target workload:")
 				continue
@@ -106,20 +104,20 @@ func main() {
 			workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
 			// Check if a rollout is needed
-			rolloutIsNeeded, err := rolloutIsNeeded(ctx, clientset, vpa, workload, diffPercentTrigger)
+			rolloutIsNeeded, err := utils.RolloutIsNeeded(ctx, clientset, vpa, workload, diffPercentTrigger)
 			if err != nil {
 				log.Error(err, "Error checking if rollout is needed:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 				continue
 			}
 			if rolloutIsNeeded {
 				// Check if the cooldown period has elapsed
-				cooldownHasElapsed, err := cooldownHasElapsed(ctx, clientset, vpa, workload, cooldownPeriodDuration)
+				cooldownHasElapsed, err := utils.CooldownHasElapsed(ctx, clientset, vpa, workload, cooldownPeriodDuration)
 				if err != nil {
 					log.Error(err, "Error checking cooldown period:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 					continue
 				}
 				if cooldownHasElapsed {
-					err := triggerRollout(ctx, workload, dynamicClient, patchOperationFieldManager)
+					err := utils.TriggerRollout(ctx, workload, dynamicClient, patchOperationFieldManager)
 					if err != nil {
 						log.Error(err, "Error triggering rollout:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 						continue

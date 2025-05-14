@@ -70,3 +70,7 @@ kubectl apply -f vpa-crd.yaml
 
 # 7. Create the default service account
 kubectl create clusterrolebinding default-view --clusterrole=cluster-admin --serviceaccount=default:default || true
+
+# 8. Install the VPA into the cluster
+echo "Deploying VPA into the cluster..."
+../autoscaler/vertical-pod-autoscaler/hack/vpa-up.sh
