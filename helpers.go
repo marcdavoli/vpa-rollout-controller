@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,20 @@ import (
 func rolloutIsNeeded(ctx context.Context, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, diffPercentTrigger int) (bool, error) {
 
 	log := log.FromContext(ctx)
+
+	// Override the diffPercentTrigger if the VPA annotation is specified
+	var effectiveDiffPercentTrigger int
+	if vpa.Annotations != nil && vpa.Annotations[vpaAnnotationDiffPercentTrigger] != "" {
+		overridenDiffPercentTrigger, err := strconv.Atoi(vpa.Annotations[vpaAnnotationDiffPercentTrigger])
+		if err != nil {
+			log.Error(err, "Error parsing diffPercentTrigger from VPA annotation", "VPAName", vpa.Name, "VPANameSpace", vpa.Namespace)
+			return false, err
+		}
+		effectiveDiffPercentTrigger = overridenDiffPercentTrigger
+
+	} else {
+		effectiveDiffPercentTrigger = diffPercentTrigger
+	}
 
 	if vpa.Status.Recommendation != nil {
 		for _, recommendation := range vpa.Status.Recommendation.ContainerRecommendations {
@@ -58,7 +73,7 @@ func rolloutIsNeeded(ctx context.Context, vpa v1.VerticalPodAutoscaler, workload
 							log.V(1).Info("Calculated diff between VPA Resource Target and Workload Resources", "CPUDiff", cpuDiff, "CPUDiffPercent", cpuDiffPercent, "MemoryDiff", memoryDiff, "MemoryDiffPercent", memoryDiffPercent)
 
 							// If difference between current and target CPU or Memory is greater than the threshold, trigger a rollout
-							if cpuDiffPercent > float64(diffPercentTrigger) || memoryDiffPercent > float64(diffPercentTrigger) {
+							if cpuDiffPercent > float64(effectiveDiffPercentTrigger) || memoryDiffPercent > float64(effectiveDiffPercentTrigger) {
 								log.V(1).Info("Rollout needed for VPA Target Workload", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
 								return true, nil
 							}
@@ -100,23 +115,18 @@ func cooldownHasElapsed(ctx context.Context, vpa v1.VerticalPodAutoscaler, workl
 
 	// Override the cooldown period duration if the VPA annotation is specified
 	var effectiveCooldownPeriodDuration time.Duration
-	if vpa.Annotations != nil {
-		if vpa.Annotations[vpaAnnotationCooldownPeriod] != "" {
-			overridenCooldownPeriodDuration, err := time.ParseDuration(vpa.Annotations[vpaAnnotationCooldownPeriod])
-			if err != nil {
-				log.Error(err, "Error parsing cooldown period duration from VPA annotation", "VPAName", vpa.Name, "VPANameSpace", vpa.Namespace)
-				return false, err
-			}
-			effectiveCooldownPeriodDuration = overridenCooldownPeriodDuration
-		} else {
-			effectiveCooldownPeriodDuration = cooldownPeriodDuration
+	if vpa.Annotations != nil && vpa.Annotations[vpaAnnotationCooldownPeriod] != "" {
+		overridenCooldownPeriodDuration, err := time.ParseDuration(vpa.Annotations[vpaAnnotationCooldownPeriod])
+		if err != nil {
+			log.Error(err, "Error parsing cooldown period duration from VPA annotation", "VPAName", vpa.Name, "VPANameSpace", vpa.Namespace)
+			return false, err
 		}
+		effectiveCooldownPeriodDuration = overridenCooldownPeriodDuration
 	} else {
 		effectiveCooldownPeriodDuration = cooldownPeriodDuration
 	}
 
-	log.V(1).Info("Effective cooldown period duration", "VPAName", vpa.Name, "VPANameSpace", vpa.Namespace, "cooldownPeriodDuration", effectiveCooldownPeriodDuration)
-
+	// Check if the annotation 'kubectl.kubernetes.io/restartedAt' is present in the workload
 	timestamp, timestampFound, err := unstructured.NestedString(workload, "spec", "template", "metadata", "annotations", "kubectl.kubernetes.io/restartedAt")
 	if err != nil {
 		log.Error(err, "Error getting timestamp", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
@@ -131,10 +141,10 @@ func cooldownHasElapsed(ctx context.Context, vpa v1.VerticalPodAutoscaler, workl
 			return false, err
 		}
 		if time.Since(lastRestartedAt) > effectiveCooldownPeriodDuration {
-			log.V(1).Info("Cooldown period has elapsed for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "elapsedTime", time.Since(lastRestartedAt), "cooldownPeriodDuration", cooldownPeriodDuration)
+			log.V(1).Info("Cooldown period has elapsed for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "elapsedTime", time.Since(lastRestartedAt).Round(time.Second), "cooldownPeriodDuration", effectiveCooldownPeriodDuration)
 			return true, nil
 		} else {
-			log.V(1).Info("Cooldown period has not elapsed for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "elapsedTime", time.Since(lastRestartedAt), "cooldownPeriodDuration", cooldownPeriodDuration)
+			log.V(1).Info("Cooldown period has not elapsed for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "elapsedTime", time.Since(lastRestartedAt).Round(time.Second), "cooldownPeriodDuration", effectiveCooldownPeriodDuration)
 		}
 
 	} else {

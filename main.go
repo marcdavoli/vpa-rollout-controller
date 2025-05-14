@@ -31,10 +31,12 @@ import (
 )
 
 const (
-	diffPercentTriggerDefault       = 10
-	cooldownPeriodDurationDefault   = 10 * time.Minute
-	loopWaitTimeInSecondsDefault    = 10
-	patchOperationFieldManager      = "flux-client-side-apply"
+	// Default values for command-line flags
+	diffPercentTriggerDefault     = 10
+	cooldownPeriodDurationDefault = 15 * time.Minute
+	loopWaitTimeInSecondsDefault  = 10
+	patchOperationFieldManager    = "flux-client-side-apply"
+	// Annotations for VPA
 	vpaAnnotationEnabled            = "vpa-rollout.influxdata.io/enabled"
 	vpaAnnotationCooldownPeriod     = "vpa-rollout.influxdata.io/cooldown-period"
 	vpaAnnotationDiffPercentTrigger = "vpa-rollout.influxdata.io/diff-percent-trigger"
