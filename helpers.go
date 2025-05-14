@@ -7,13 +7,16 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	v1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -196,4 +199,30 @@ func vpaIsEligible(ctx context.Context, vpa v1.VerticalPodAutoscaler) bool {
 		log.V(1).Info("VPA is not eligible for processing", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name, "Reason", "UpdateMode is not set to 'Initial'")
 	}
 	return false
+}
+
+// Get the VPA's target workload resource's pods using selector labels
+func getTargetWorkloadPods(ctx context.Context, workload map[string]interface{}, clientset kubernetes.Interface) (*corev1.PodList, error) {
+
+	log := log.FromContext(ctx)
+	workloadName := workload["metadata"].(map[string]interface{})["name"]
+	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
+
+	// Get the selector labels from the workload
+	selectorLabels, _, err := unstructured.NestedStringMap(workload, "spec", "selector", "matchLabels")
+	if err != nil {
+		log.Error(err, "Error getting selector labels from workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return nil, err
+	}
+
+	// Get the pods using the selector labels and typedClient
+	podList, err := clientset.CoreV1().Pods(workloadNamespace.(string)).List(ctx, metav1.ListOptions{
+		LabelSelector: labels.Set(selectorLabels).String(),
+	})
+	if err != nil {
+		log.Error(err, "Error getting pods for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return nil, err
+	}
+
+	return podList, nil
 }
