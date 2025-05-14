@@ -5,8 +5,8 @@ metadata:
   namespace: default
   annotations:
     vpa-rollout.influxdata.io/enabled: "true"
-    vpa-rollout.influxdata.io/diff-percent-trigger: "22"
-    vpa-rollout.influxdata.io/cooldown-period: "5m"
+    vpa-rollout.influxdata.io/diff-percent-trigger: "15"
+    vpa-rollout.influxdata.io/cooldown-period: "15m"
 spec:
   resourcePolicy:
     containerPolicies:
@@ -35,10 +35,15 @@ metadata:
   name: mydeployment
   namespace: default
 spec:
-  replicas: 1
+  replicas: 4
   selector:
     matchLabels:
       app: myapp
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
   template:
     metadata:
       labels:
