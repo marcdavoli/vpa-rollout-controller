@@ -6,7 +6,7 @@ metadata:
   annotations:
     vpa-rollout.influxdata.io/enabled: "true"
     vpa-rollout.influxdata.io/diff-percent-trigger: "15"
-    vpa-rollout.influxdata.io/cooldown-period: "15m"
+    vpa-rollout.influxdata.io/cooldown-period: "2m"
 spec:
   resourcePolicy:
     containerPolicies:
