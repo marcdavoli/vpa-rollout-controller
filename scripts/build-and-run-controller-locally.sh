@@ -3,23 +3,26 @@
 # It assumes that you have Go, Docker and Kind installed and configured on your system.
 # Usage: ./scripts/build-and-run-controller.sh
 
+app_name="vpa-rollout-controller"
+registry_host="localhost:5001"
+random_tag=$(openssl rand -hex 4)
+
 set -e
 
-# Housekeeping
-echo "Housekeeping..."
-kubectl delete pod vpa-rollout-controller || true
-
-# Build the Go application and build and push a Docker image to local registry
+# Build and push a new Docker image to local registry
 echo "Building the Go application and Docker image..."
-docker build -t in-cluster .
-random_tag=$(openssl rand -hex 4)
-docker tag in-cluster localhost:5001/in-cluster:${random_tag}
-docker push localhost:5001/in-cluster:${random_tag}
-kind load docker-image localhost:5001/in-cluster:${random_tag}
+docker build -t ${app_name} .
+docker tag ${app_name} ${registry_host}/${app_name}:${random_tag}
+docker push ${registry_host}/${app_name}:${random_tag}
+
+# Load the Docker image into the Kind cluster's registry
+kind load docker-image ${registry_host}/${app_name}:${random_tag}
 
 # Run the Docker image in a Kubernetes pod
 echo "Running the Docker image in a Kubernetes pod..."
-kubectl run vpa-rollout-controller --image=localhost:5001/in-cluster:${random_tag}
-sleep 5
+kubectl wait serviceaccount/default --for=create
+kubectl delete pod vpa-rollout-controller
+kubectl run vpa-rollout-controller --image=${registry_host}/${app_name}:${random_tag}
+kubectl wait pod/vpa-rollout-controller --for condition=Ready
 echo "Tailing pod logs... Press Ctrl+C to exit."
 kubectl logs -f vpa-rollout-controller
