@@ -19,7 +19,7 @@ import (
 )
 
 // Check if a rollout is needed based on the VPA recommendation and the workload's pods' current resource requests
-func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, diffPercentTrigger int) (bool, error) {
+func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa *v1.VerticalPodAutoscaler, workload map[string]interface{}, diffPercentTrigger int) (bool, error) {
 
 	log := log.FromContext(ctx)
 	workloadName := workload["metadata"].(map[string]interface{})["name"]

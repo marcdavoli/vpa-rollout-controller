@@ -11,7 +11,7 @@ import (
 )
 
 // Check if the cooldown period has elapsed, to avoid rolling too frequently
-func CooldownHasElapsed(ctx context.Context, clientset kubernetes.Interface, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, cooldownPeriodDuration time.Duration) (bool, error) {
+func CooldownHasElapsed(ctx context.Context, clientset kubernetes.Interface, vpa *v1.VerticalPodAutoscaler, workload map[string]interface{}, cooldownPeriodDuration time.Duration) (bool, error) {
 
 	log := log.FromContext(ctx)
 	workloadName := workload["metadata"].(map[string]interface{})["name"]

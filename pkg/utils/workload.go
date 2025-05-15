@@ -18,7 +18,7 @@ import (
 )
 
 // Check if the VPA has the "enabled" annotation set to "true" and that the VPA's updateMode is set to 'Initial'
-func VPAIsEligible(ctx context.Context, vpa v1.VerticalPodAutoscaler) bool {
+func VPAIsEligible(ctx context.Context, vpa *v1.VerticalPodAutoscaler) bool {
 
 	log := log.FromContext(ctx)
 	// Check if the VPA updateMode is set to Initial
@@ -37,7 +37,7 @@ func VPAIsEligible(ctx context.Context, vpa v1.VerticalPodAutoscaler) bool {
 }
 
 // Get the target workload from the VPA spec
-func GetTargetWorkload(ctx context.Context, vpa v1.VerticalPodAutoscaler, dynamicClient dynamic.Interface) (map[string]interface{}, error) {
+func GetTargetWorkload(ctx context.Context, vpa *v1.VerticalPodAutoscaler, dynamicClient dynamic.Interface) (map[string]interface{}, error) {
 
 	vpaTargetGroupVersionResource := schema.GroupVersionResource{
 		Group:    strings.SplitN(vpa.Spec.TargetRef.APIVersion, "/", 2)[0],
