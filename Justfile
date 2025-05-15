@@ -22,3 +22,7 @@ docker-build arch=DEFAULT_ARCH TAG=LATEST:
     --build-arg=TARGETARCH={{arch}} \
     --build-arg=OPERATOR_VERSION={{LATEST}} \
     -t {{APP_NAME}}:{{TAG}} .
+
+# Pushes the docker image to Google Artifact Registry
+docker-push arch=DEFAULT_ARCH TAG=LATEST:
+    ./scripts/docker-push-to-gar.sh {{arch}} {{TAG}}

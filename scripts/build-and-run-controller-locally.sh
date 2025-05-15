@@ -7,7 +7,6 @@ app_name="vpa-rollout-controller"
 registry_host="localhost:5001"
 random_tag=$(openssl rand -hex 4)
 build_platform="${1:-amd64}"
-tag="latest-${build_platform}"
 
 set -e
 
