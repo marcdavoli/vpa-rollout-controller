@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # This script build the Docker image and app, and runs it in a Kubernetes cluster using Kind.
 # It assumes that you have Go, Docker and Kind installed and configured on your system.
-# Usage: ./scripts/build-and-run-controller.sh
+# Usage: ./scripts/build-and-run-controller.sh [build_platform]
 
 app_name="vpa-rollout-controller"
 registry_host="localhost:5001"
 random_tag=$(openssl rand -hex 4)
+build_platform="${1:-amd64}"
 
 set -e
 
 # Build and push a new Docker image to local registry
 echo "Building the Go application and Docker image..."
-docker build -t ${app_name} .
+just docker-build ${build_platform}
 docker tag ${app_name} ${registry_host}/${app_name}:${random_tag}
 docker push ${registry_host}/${app_name}:${random_tag}
 
