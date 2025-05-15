@@ -50,7 +50,7 @@ func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 		effectiveDiffPercentTrigger = diffPercentTrigger
 	}
 
-	if vpa.Status.Recommendation != nil {
+	if vpa.Status.Recommendation != nil || vpa.Status.Recommendation.ContainerRecommendations != nil {
 		for _, recommendation := range vpa.Status.Recommendation.ContainerRecommendations {
 			if recommendation.Target != nil {
 				log.V(1).Info("Processing VPA Recommendation", "ContainerName", recommendation.ContainerName, "ContainerTargetCPU", recommendation.Target.Cpu(), "ContainerTargetMemory", recommendation.Target.Memory())
