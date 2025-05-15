@@ -1,3 +1,7 @@
+IMG := "controller:latest"
+DEFAULT_ARCH := "amd64"
+LATEST := `git rev-parse --short HEAD`
+
 test:
 	go fmt ./...
 	go vet ./...
@@ -8,15 +12,11 @@ dev:
     ./scripts/create-kind-cluster-with-registry.sh
 
 # Runs the controller in a local kind cluster
-run:
-    ./scripts/build-and-run-controller-locally.sh
+run arch=DEFAULT_ARCH:
+    ./scripts/build-and-run-controller-locally.sh {{arch}}
 
-################# Docker recipes #############
-IMG := "controller:latest"
-BUILD_PLATFORMS := "linux/arm64,linux/amd64"
-LATEST := `git rev-parse --short HEAD`
-# Builds the docker image for the selected platform. Usage: just docker-build amd64
-docker-build arch='amd64':
+# Builds the docker image for the selected platform.
+docker-build arch=DEFAULT_ARCH:
     docker build \
     --platform linux/{{arch}} \
     --build-arg=TARGETARCH={{arch}} \
