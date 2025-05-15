@@ -61,17 +61,17 @@ The following table lists the CLI flags supported by the vpa-rollout-controller:
 
 | Flag | Type | Default Value | Description |
 |------|------|---------------|-------------|
-| `diffPercentTrigger` | int | 10 | Percentage difference between VPA recommendation and current resources that triggers a rollout |
-| `cooldownPeriod` | duration | 15m | Cooldown period before triggering another rollout for the same workload |
-| `loopWaitTime` | int | 10 | Time in seconds to wait between each loop iteration |
-| `patchOperationFieldManager` | string | "flux-client-side-apply" | Field manager name for patch operations |
+| `diffPercentTrigger` | int | `10` | Percentage difference between VPA recommendation and current resources that triggers a rollout |
+| `cooldownPeriod` | duration | `15m` | Cooldown period before triggering another rollout for the same workload |
+| `loopWaitTime` | int | `30` | Time in seconds to wait between each loop iteration |
+| `patchOperationFieldManager` | string | `flux-client-side-apply` | Field manager name for patch operations |
 
 ## Annotations
 
 These annotations can be added to `VerticalPodAutoscaler` resources to customize the behavior of the vpa-rollout-controller:
 
-| Annotation | Type | Default | Description |
-|------------|------|---------|-------------|
-| `vpa-rollout.influxdata.io/enabled` | boolean | - | Required annotation to enable a VPA to be managed by the controller. Must be set to `"true"` |
-| `vpa-rollout.influxdata.io/cooldown-period` | duration | - | Override the default cooldown period for a specific VPA. Accepts a valid Go duration string (e.g., `"15m"`, `"1h"`) |
-| `vpa-rollout.influxdata.io/diff-percent-trigger` | int | - | Override the default percentage difference that triggers a rollout for a specific VPA |
+| Annotation | Type | Description |
+|------------|------|-------------|
+| `vpa-rollout.influxdata.io/enabled` | boolean | Required annotation to enable a VPA to be managed by the controller. Must be set to `"true"` |
+| `vpa-rollout.influxdata.io/cooldown-period` | duration | Override the default cooldown period for a specific VPA. Accepts a valid Go duration string (e.g., `"15m"`, `"1h"`) |
+| `vpa-rollout.influxdata.io/diff-percent-trigger` | int | Override the default percentage difference that triggers a rollout for a specific VPA |

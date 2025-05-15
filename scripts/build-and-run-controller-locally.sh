@@ -7,12 +7,13 @@ app_name="vpa-rollout-controller"
 registry_host="localhost:5001"
 random_tag=$(openssl rand -hex 4)
 build_platform="${1:-amd64}"
+tag="latest-${build_platform}"
 
 set -e
 
 # Build and push a new Docker image to local registry
 echo "Building the Go application and Docker image..."
-just docker-build ${build_platform}
+just docker-build ${build_platform} ${random_tag}
 docker tag ${app_name} ${registry_host}/${app_name}:${random_tag}
 docker push ${registry_host}/${app_name}:${random_tag}
 

@@ -1,4 +1,4 @@
-IMG := "controller:latest"
+APP := 'vpa-rollout-controller'
 DEFAULT_ARCH := "amd64"
 LATEST := `git rev-parse --short HEAD`
 
@@ -16,9 +16,9 @@ run arch=DEFAULT_ARCH:
     ./scripts/build-and-run-controller-locally.sh {{arch}}
 
 # Builds the docker image for the selected platform.
-docker-build arch=DEFAULT_ARCH:
+docker-build arch=DEFAULT_ARCH TAG="latest-{{arch}}":
     docker build \
     --platform linux/{{arch}} \
     --build-arg=TARGETARCH={{arch}} \
     --build-arg=OPERATOR_VERSION={{LATEST}} \
-    -t {{IMG}}-{{arch}} .
+    -t {{APP}}:{{TAG}} .
