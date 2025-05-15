@@ -22,7 +22,7 @@ kind load docker-image ${registry_host}/${app_name}:${random_tag}
 # Run the Docker image in a Kubernetes pod
 echo "Running the Docker image in a Kubernetes pod..."
 kubectl wait serviceaccount/default --for=create
-kubectl delete pod vpa-rollout-controller
+kubectl delete pod vpa-rollout-controller --ignore-not-found
 kubectl run vpa-rollout-controller --image=${registry_host}/${app_name}:${random_tag}
 kubectl wait pod/vpa-rollout-controller --for condition=Ready
 echo "Tailing pod logs... Press Ctrl+C to exit."
