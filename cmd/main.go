@@ -58,6 +58,8 @@ func main() {
 
 	log.SetLogger(zap.New(zap.UseDevMode(true)))
 	ctx := log.IntoContext(context.Background(), ctrl.Log.WithName("vpa-rollout-controller"))
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	stop, watcherDone, handlerDone := beginWatch(ctx)
 
