@@ -59,14 +59,16 @@ func main() {
 	log.SetLogger(zap.New(zap.UseDevMode(true)))
 	ctx := log.IntoContext(context.Background(), ctrl.Log.WithName("vpa-rollout-controller"))
 
-	stop, done := beginWatch(ctx)
+	stop, watcherDone, handlerDone := beginWatch(ctx)
 
 	<-sigCh
 	stop()
-	<-done
+	<-watcherDone
+	<-handlerDone
 }
 
-func beginWatch(ctx context.Context) (stop func(), doneChan <-chan struct{}) {
+func beginWatch(ctx context.Context) (func(), <-chan struct{}, <-chan struct{}) {
+	done := make(chan struct{})
 
 	logger := log.FromContext(ctx)
 
@@ -137,6 +139,8 @@ func beginWatch(ctx context.Context) (stop func(), doneChan <-chan struct{}) {
 
 	// Watch for changes to VPAs
 	go func() {
+		defer close(done)
+
 		for event := range retryWatcher.ResultChan() {
 			switch event.Type {
 			case watch.Deleted:
@@ -157,7 +161,7 @@ func beginWatch(ctx context.Context) (stop func(), doneChan <-chan struct{}) {
 		}
 	}()
 
-	return retryWatcher.Stop, retryWatcher.Done()
+	return retryWatcher.Stop, retryWatcher.Done(), done
 }
 
 func processVPAItem(ctx context.Context, vpa *v1.VerticalPodAutoscaler, clientset *kubernetes.Clientset, dynamicClient dynamic.Interface, diffPercentTrigger int, cooldownPeriodDuration time.Duration) {
