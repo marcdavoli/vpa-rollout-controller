@@ -65,12 +65,11 @@ data:
     help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
 EOF
 
-# 6. Apply the VPA CRD
-kubectl apply -f vpa-crd.yaml
+# 6. Install the VerticalPodAutoscaler controller and CRDs
+echo "Deploying VPA into the cluster..."
+cd ../autoscaler/vertical-pod-autoscaler/hack
+./vpa-up.sh
+cd -
 
 # 7. Create the default service account
 kubectl create clusterrolebinding default-view --clusterrole=cluster-admin --serviceaccount=default:default || true
-
-# 8. Install the VPA into the cluster
-echo "Deploying VPA into the cluster..."
-../autoscaler/vertical-pod-autoscaler/hack/vpa-up.sh
