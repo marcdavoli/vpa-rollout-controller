@@ -20,6 +20,8 @@ package main
 import (
 	"context"
 	"flag"
+	"log/slog"
+	"os"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,8 +29,6 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/influxdata/vpa-rollout-controller/pkg/utils"
 )
@@ -45,8 +45,7 @@ func main() {
 
 	ctx := context.Background()
 
-	log.SetLogger(zap.New(zap.UseDevMode(true)))
-	log := log.FromContext(ctx)
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	// Command-line flags with default values
 	diffPercentTriggerDefault := flag.Int("diffPercentTrigger", diffPercentTriggerDefault, "Percentage difference to trigger rollout")
@@ -58,7 +57,7 @@ func main() {
 	cooldownPeriodDuration := *cooldownPeriodInMinutesDefault
 	loopWaitTimeDuration := time.Duration(*loopWaitTimeInSecondsDefault) * time.Second
 	patchOperationFieldManager := *patchOperationFieldManagerDefault
-	log.V(1).Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffPercentTrigger, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeDuration, "patchOperationFieldManager", patchOperationFieldManager)
+	log.Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffPercentTrigger, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeDuration, "patchOperationFieldManager", patchOperationFieldManager)
 
 	// Setup client-go
 	config, err := rest.InClusterConfig()
@@ -84,7 +83,7 @@ func main() {
 		if err != nil {
 			panic(err.Error())
 		}
-		log.V(1).Info("Processing list of VPAs in the cluster", "Total", len(vpas.Items))
+		log.Info("Processing list of VPAs in the cluster", "Total", len(vpas.Items))
 
 		for _, vpa := range vpas.Items {
 
@@ -92,12 +91,12 @@ func main() {
 			if !utils.VPAIsEligible(ctx, vpa) {
 				continue
 			}
-			log.V(1).Info("Processing VPA", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
+			log.Info("Processing VPA", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
 
 			// Get the VPA's target workload resource
 			workload, err := utils.GetTargetWorkload(ctx, vpa, dynamicClient)
 			if err != nil {
-				log.Error(err, "Error fetching target workload:")
+				log.Error("Error fetching target workload", "err", err)
 				continue
 			}
 			workloadName := workload["metadata"].(map[string]interface{})["name"]
@@ -106,20 +105,20 @@ func main() {
 			// Check if a rollout is needed
 			rolloutIsNeeded, err := utils.RolloutIsNeeded(ctx, clientset, vpa, workload, diffPercentTrigger)
 			if err != nil {
-				log.Error(err, "Error checking if rollout is needed:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+				log.Error("Error checking if rollout is needed", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 				continue
 			}
 			if rolloutIsNeeded {
 				// Check if the cooldown period has elapsed
 				cooldownHasElapsed, err := utils.CooldownHasElapsed(ctx, clientset, vpa, workload, cooldownPeriodDuration)
 				if err != nil {
-					log.Error(err, "Error checking cooldown period:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+					log.Error("Error checking cooldown period", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 					continue
 				}
 				if cooldownHasElapsed {
 					err := utils.TriggerRollout(ctx, workload, dynamicClient, patchOperationFieldManager)
 					if err != nil {
-						log.Error(err, "Error triggering rollout:", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+						log.Error("Error triggering rollout", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 						continue
 					}
 				}
