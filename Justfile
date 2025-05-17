@@ -1,4 +1,4 @@
-APP_NAME := 'vpa-rollout-controller'
+APP_NAME := "vpa-rollout-controller"
 DEFAULT_ARCH := "amd64"
 LATEST := `git rev-parse --short HEAD`
 
@@ -16,12 +16,12 @@ run arch=DEFAULT_ARCH:
     ./scripts/build-and-run-controller-locally.sh {{arch}}
 
 # Builds the docker image for the selected platform.
-docker-build arch=DEFAULT_ARCH TAG=LATEST:
+docker-build arch=DEFAULT_ARCH tag=LATEST:
     docker build \
     --platform linux/{{arch}} \
     --build-arg=TARGETARCH={{arch}} \
-    --build-arg=OPERATOR_VERSION={{LATEST}} \
-    -t {{APP_NAME}}:{{TAG}} .
+    --build-arg=OPERATOR_VERSION={{tag}} \
+    -t {{APP_NAME}}:{{tag}} .
 
 # Pushes the docker image to Google Artifact Registry
 docker-push arch=DEFAULT_ARCH TAG=LATEST:
