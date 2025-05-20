@@ -2,14 +2,19 @@ APP_NAME := "vpa-rollout-controller"
 DEFAULT_ARCH := "amd64"
 LATEST := `git rev-parse --short HEAD`
 
+# Runs 'just -l'
+help:
+    just -l
+
+# go fmt, go vet and go test
 test:
 	go fmt ./...
 	go vet ./...
-## More coming soon
+	go test ./...
 
 # Deploys a kind cluster with a local registry
 dev:
-    ./scripts/create-kind-cluster-with-registry.sh
+    ./scripts/create-kind-cluster.sh
 
 # Runs the controller in a local kind cluster
 run arch=DEFAULT_ARCH:
@@ -24,5 +29,5 @@ docker-build arch=DEFAULT_ARCH tag=LATEST:
     -t {{APP_NAME}}:{{tag}} .
 
 # Pushes the docker image to Google Artifact Registry
-docker-push arch=DEFAULT_ARCH TAG=LATEST:
-    ./scripts/docker-push-to-gar.sh {{arch}} {{TAG}}
+push-to-gar arch=DEFAULT_ARCH TAG=LATEST:
+    ./scripts/push-to-gar.sh {{arch}} {{TAG}}
