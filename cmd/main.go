@@ -30,15 +30,15 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/influxdata/vpa-rollout-controller/pkg/utils"
+	c "github.com/influxdata/vpa-rollout-controller/internal/controller"
 )
 
 const (
 	// Default values for command-line flags
-	diffPercentTriggerDefault     = 10
-	cooldownPeriodDurationDefault = 15 * time.Minute
-	loopWaitTimeInSecondsDefault  = 10
-	patchOperationFieldManager    = "flux-client-side-apply"
+	diffPercentTriggerDefault         = 10
+	cooldownPeriodDurationDefault     = 15 * time.Minute
+	loopWaitTimeInSecondsDefault      = 10
+	patchOperationFieldManagerDefault = "flux-client-side-apply"
 )
 
 func main() {
@@ -49,12 +49,12 @@ func main() {
 
 	// Command-line flags with default values
 	diffPercentTriggerDefault := flag.Int("diffPercentTrigger", diffPercentTriggerDefault, "Percentage difference to trigger rollout")
-	cooldownPeriodInMinutesDefault := flag.Duration("cooldownPeriod", cooldownPeriodDurationDefault, "Cooldown period before triggering another rollout")
+	cooldownPeriodDurationDefault := flag.Duration("cooldownPeriod", cooldownPeriodDurationDefault, "Cooldown period before triggering another rollout")
 	loopWaitTimeInSecondsDefault := flag.Int("loopWaitTime", loopWaitTimeInSecondsDefault, "Time to wait between each loop iteration")
-	patchOperationFieldManagerDefault := flag.String("patchOperationFieldManager", patchOperationFieldManager, "Field manager for patch operations")
+	patchOperationFieldManagerDefault := flag.String("patchOperationFieldManager", patchOperationFieldManagerDefault, "Field manager for patch operations")
 	flag.Parse()
 	diffPercentTrigger := *diffPercentTriggerDefault
-	cooldownPeriodDuration := *cooldownPeriodInMinutesDefault
+	cooldownPeriodDuration := *cooldownPeriodDurationDefault
 	loopWaitTimeDuration := time.Duration(*loopWaitTimeInSecondsDefault) * time.Second
 	patchOperationFieldManager := *patchOperationFieldManagerDefault
 	log.Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffPercentTrigger, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeDuration, "patchOperationFieldManager", patchOperationFieldManager)
@@ -88,13 +88,13 @@ func main() {
 		for _, vpa := range vpas.Items {
 
 			// Check if the VPA is eligible for processing
-			if !utils.VPAIsEligible(ctx, vpa) {
+			if !c.VPAIsEligible(ctx, vpa) {
 				continue
 			}
 			log.Info("Processing VPA", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
 
 			// Get the VPA's target workload resource
-			workload, err := utils.GetTargetWorkload(ctx, vpa, dynamicClient)
+			workload, err := c.GetTargetWorkload(ctx, vpa, dynamicClient)
 			if err != nil {
 				log.Error("Error fetching target workload", "err", err)
 				continue
@@ -103,20 +103,20 @@ func main() {
 			workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
 			// Check if a rollout is needed
-			rolloutIsNeeded, err := utils.RolloutIsNeeded(ctx, clientset, vpa, workload, diffPercentTrigger)
+			rolloutIsNeeded, err := c.RolloutIsNeeded(ctx, clientset, vpa, workload, diffPercentTrigger)
 			if err != nil {
 				log.Error("Error checking if rollout is needed", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 				continue
 			}
 			if rolloutIsNeeded {
 				// Check if the cooldown period has elapsed
-				cooldownHasElapsed, err := utils.CooldownHasElapsed(ctx, clientset, vpa, workload, cooldownPeriodDuration)
+				cooldownHasElapsed, err := c.CooldownHasElapsed(ctx, clientset, vpa, workload, cooldownPeriodDuration)
 				if err != nil {
 					log.Error("Error checking cooldown period", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 					continue
 				}
 				if cooldownHasElapsed {
-					err := utils.TriggerRollout(ctx, workload, dynamicClient, patchOperationFieldManager)
+					err := c.TriggerRollout(ctx, workload, dynamicClient, patchOperationFieldManager)
 					if err != nil {
 						log.Error("Error triggering rollout", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 						continue
