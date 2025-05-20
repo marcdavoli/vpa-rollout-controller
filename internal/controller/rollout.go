@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/influxdata/vpa-rollout-controller/pkg/utils"
+
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -38,8 +40,8 @@ func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 
 	// Override the diffPercentTrigger if the VPA annotation is specified
 	var effectiveDiffPercentTrigger int
-	if vpa.Annotations != nil && vpa.Annotations[VPAAnnotationDiffPercentTrigger] != "" {
-		overridenDiffPercentTrigger, err := strconv.Atoi(vpa.Annotations[VPAAnnotationDiffPercentTrigger])
+	if vpa.Annotations != nil && vpa.Annotations[utils.VPAAnnotationDiffPercentTrigger] != "" {
+		overridenDiffPercentTrigger, err := strconv.Atoi(vpa.Annotations[utils.VPAAnnotationDiffPercentTrigger])
 		if err != nil {
 			log.Error("Error parsing diffPercentTrigger from VPA annotation", "err", err, "VPAName", vpa.Name, "VPANameSpace", vpa.Namespace)
 			return false, err

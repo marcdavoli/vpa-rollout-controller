@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/influxdata/vpa-rollout-controller/pkg/utils"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -24,7 +26,7 @@ func VPAIsEligible(ctx context.Context, vpa v1.VerticalPodAutoscaler) bool {
 	// Check if the VPA updateMode is set to Initial
 	if vpa.Spec.UpdatePolicy.UpdateMode != nil && *vpa.Spec.UpdatePolicy.UpdateMode == v1.UpdateModeInitial {
 		// Check if the VPA has the annotation "vpa-rollout.influxdata.io/enabled" set to "true"
-		if vpa.Annotations != nil && vpa.Annotations[VPAAnnotationEnabled] == "true" {
+		if vpa.Annotations != nil && vpa.Annotations[utils.VPAAnnotationEnabled] == "true" {
 			return true
 		} else {
 			log.Info("VPA is not eligible for processing", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name, "Reason", "Annotation 'vpa-rollout.influxdata.io/enabled' not set to 'true'")

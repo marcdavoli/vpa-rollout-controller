@@ -4,86 +4,44 @@ import (
 	"context"
 	"testing"
 
-	autoscaling "k8s.io/api/autoscaling/v1"
+	"github.com/influxdata/vpa-rollout-controller/pkg/utils"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
-
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
+	"k8s.io/client-go/kubernetes/fake"
 
 	testutil "github.com/influxdata/vpa-rollout-controller/test"
 )
 
 func TestVPAIsEligible(t *testing.T) {
 	ctx := context.Background()
-	mode := vpa_types.UpdateModeInitial
 
-	vpa := vpa_types.VerticalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-vpa",
-			Namespace: "default",
-			Annotations: map[string]string{
-				VPAAnnotationEnabled: "true",
-			},
-		},
-		Spec: vpa_types.VerticalPodAutoscalerSpec{
-			TargetRef: &autoscaling.CrossVersionObjectReference{
-				APIVersion: "apps/v1",
-				Kind:       "Deployment",
-				Name:       "test-deployment",
-			},
-			UpdatePolicy: &vpa_types.PodUpdatePolicy{
-				UpdateMode: &mode,
-			},
-		},
-	}
+	// Create a test VPA with the enabled annotation
+	vpa := testutil.CreateTestVPA(
+		testutil.WithAnnotation(utils.VPAAnnotationEnabled, "true"),
+	)
 
 	if !VPAIsEligible(ctx, vpa) {
 		t.Errorf("VPAIsEligible should return true when annotation is set and updateMode is Initial")
 	}
 
 	// Negative case: annotation missing
-	vpaNoAnnotation := vpa_types.VerticalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-vpa",
-			Namespace: "default",
-		},
-		Spec: vpa_types.VerticalPodAutoscalerSpec{
-			TargetRef: &autoscaling.CrossVersionObjectReference{
-				APIVersion: "apps/v1",
-				Kind:       "Deployment",
-				Name:       "test-deployment",
-			},
-			UpdatePolicy: &vpa_types.PodUpdatePolicy{
-				UpdateMode: &mode,
-			},
-		},
-	}
+	vpaNoAnnotation := testutil.CreateTestVPA()
+	// Remove the annotation
+	vpaNoAnnotation.Annotations = map[string]string{}
+
 	if VPAIsEligible(ctx, vpaNoAnnotation) {
 		t.Errorf("VPAIsEligible should return false when annotation is missing")
 	}
 
 	// Negative case: annotation present but updateMode is not Initial
 	otherMode := vpa_types.UpdateModeAuto
-	vpaWrongMode := vpa_types.VerticalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-vpa",
-			Namespace: "default",
-			Annotations: map[string]string{
-				VPAAnnotationEnabled: "true",
-			},
-		},
-		Spec: vpa_types.VerticalPodAutoscalerSpec{
-			TargetRef: &autoscaling.CrossVersionObjectReference{
-				APIVersion: "apps/v1",
-				Kind:       "Deployment",
-				Name:       "test-deployment",
-			},
-			UpdatePolicy: &vpa_types.PodUpdatePolicy{
-				UpdateMode: &otherMode,
-			},
-		},
-	}
+	vpaWrongMode := testutil.CreateTestVPA(
+		testutil.WithAnnotation(utils.VPAAnnotationEnabled, "true"),
+		testutil.WithUpdateMode(otherMode),
+	)
+
 	if VPAIsEligible(ctx, vpaWrongMode) {
 		t.Errorf("VPAIsEligible should return false when updateMode is not Initial")
 	}
@@ -92,19 +50,9 @@ func TestVPAIsEligible(t *testing.T) {
 func TestGetTargetWorkload(t *testing.T) {
 	ctx := context.Background()
 	fakeDynamic := &testutil.FakeDynamicClient{}
-	vpa := vpa_types.VerticalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-vpa",
-			Namespace: "default",
-		},
-		Spec: vpa_types.VerticalPodAutoscalerSpec{
-			TargetRef: &autoscaling.CrossVersionObjectReference{
-				APIVersion: "apps/v1",
-				Kind:       "Deployment",
-				Name:       "test-deployment",
-			},
-		},
-	}
+
+	// Create test VPA using the utility function
+	vpa := testutil.CreateTestVPA()
 
 	// Success case
 	workload, err := GetTargetWorkload(ctx, vpa, fakeDynamic)
@@ -135,17 +83,7 @@ func TestGetTargetWorkloadPods(t *testing.T) {
 			Status: corev1.PodStatus{Phase: corev1.PodRunning},
 		},
 	)
-	workload := map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"name":      "mydeployment",
-			"namespace": "default",
-		},
-		"spec": map[string]interface{}{
-			"selector": map[string]interface{}{
-				"matchLabels": map[string]interface{}{"app": "myapp"},
-			},
-		},
-	}
+	workload := testutil.CreateTestWorkload("mydeployment", "default", "")
 	pods, err := getTargetWorkloadPods(ctx, workload, client)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
@@ -181,17 +119,7 @@ func TestWorkloadPodsAreHealthy(t *testing.T) {
 			},
 		},
 	)
-	workload := map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"name":      "mydeployment",
-			"namespace": "default",
-		},
-		"spec": map[string]interface{}{
-			"selector": map[string]interface{}{
-				"matchLabels": map[string]interface{}{"app": "myapp"},
-			},
-		},
-	}
+	workload := testutil.CreateTestWorkload("mydeployment", "default", "")
 	healthy, err := workloadPodsAreHealthy(ctx, workload, client)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
