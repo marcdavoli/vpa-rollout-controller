@@ -22,9 +22,9 @@ This controller actually works in conjunction with the upstream VPA components, 
     - [`VerticalPodAutoscaler` Resources](#verticalpodautoscaler-resources)
     - [`ClusterRole` \& `ClusterRoleBinding` Permissions](#clusterrole--clusterrolebinding-permissions)
     - [Usage](#usage)
-  - [TO DO](#to-do)
   - [CLI Flags](#cli-flags)
   - [Annotations](#annotations)
+  - [Scalability](#scalability)
 
 ## Running Locally
 This app is meant to run as a pod inside a Kubernetes cluster, for which it will 
@@ -47,13 +47,7 @@ This app is meant to run as a pod inside a Kubernetes cluster, for which it will
 - Read and Patch the Target workload resources (Deployments, StatefulSets, DaemonSets, etc.)
 - List and Read Pods
 
-
 ### Usage
-
-TBD
-
-## TO DO
-- make install/deploy to run into kubectl context
 
 ## CLI Flags
 
@@ -75,3 +69,6 @@ These annotations can be added to `VerticalPodAutoscaler` resources to customize
 | `vpa-rollout.influxdata.io/enabled` | boolean | Required annotation to enable a VPA to be managed by the controller. Must be set to `"true"` |
 | `vpa-rollout.influxdata.io/cooldown-period` | duration | Override the default cooldown period for a specific VPA. Accepts a valid Go duration string (e.g., `"15m"`, `"1h"`) |
 | `vpa-rollout.influxdata.io/diff-percent-trigger` | int | Override the default percentage difference that triggers a rollout for a specific VPA |
+
+## Scalability
+`vpa-rollout-controller` has not been tested in large clusters, with more than 10 VerticalPodAutoscaler resources.
