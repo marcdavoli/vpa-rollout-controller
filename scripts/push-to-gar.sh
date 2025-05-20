@@ -3,9 +3,9 @@
 # It assumes that you have Go, Docker and Google Cloud SDK installed and configured on your system.
 # Usage: ./scripts/docker-push-to-gar.sh [build_platform]
 app_name="vpa-rollout-controller"
-tag=$(git rev-parse HEAD)
-prefix="us-docker.pkg.dev/influxdb2-artifacts/tubernetes"
 build_platform="${1:-amd64}"
+tag="${2:-$(git rev-parse HEAD)}"
+prefix="us-docker.pkg.dev/influxdb2-artifacts/tubernetes"
 image="${prefix}/${app_name}:${tag}"
 
 set -e
