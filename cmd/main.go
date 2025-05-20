@@ -102,20 +102,20 @@ func main() {
 			workloadName := workload["metadata"].(map[string]interface{})["name"]
 			workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
-			// Check if a rollout is needed
-			rolloutIsNeeded, err := c.RolloutIsNeeded(ctx, clientset, vpa, workload, diffPercentTrigger)
+			// Check if the cooldown period has elapsed
+			cooldownHasElapsed, err := c.CooldownHasElapsed(ctx, clientset, vpa, workload, cooldownPeriodDuration)
 			if err != nil {
-				log.Error("Error checking if rollout is needed", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+				log.Error("Error checking cooldown period", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 				continue
 			}
-			if rolloutIsNeeded {
-				// Check if the cooldown period has elapsed
-				cooldownHasElapsed, err := c.CooldownHasElapsed(ctx, clientset, vpa, workload, cooldownPeriodDuration)
+			if cooldownHasElapsed {
+				// Check if a rollout is needed
+				rolloutIsNeeded, err := c.RolloutIsNeeded(ctx, clientset, vpa, workload, diffPercentTrigger)
 				if err != nil {
-					log.Error("Error checking cooldown period", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+					log.Error("Error checking if rollout is needed", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 					continue
 				}
-				if cooldownHasElapsed {
+				if rolloutIsNeeded {
 					err := c.TriggerRollout(ctx, workload, dynamicClient, patchOperationFieldManager)
 					if err != nil {
 						log.Error("Error triggering rollout", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
