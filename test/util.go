@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	autoscaling "k8s.io/api/autoscaling/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -205,9 +207,59 @@ func WithAnnotation(key, value string) VPAOption {
 	}
 }
 
+// VPAContainerRecommendationOption allows setting fields on a RecommendedContainerResources
+// ContainerName defaults to "container-0" if not set
+// Usage: WithRecommendation(WithTargetCPU(...), WithTargetMemory(...))
+type VPAContainerRecommendationOption func(*vpa_types.RecommendedContainerResources)
+
+func WithRecommendation(options ...VPAContainerRecommendationOption) VPAOption {
+	return func(vpa *vpa_types.VerticalPodAutoscaler) {
+		containerRec := vpa_types.RecommendedContainerResources{
+			ContainerName: "container-0",
+			Target:        corev1.ResourceList{},
+		}
+		for _, opt := range options {
+			opt(&containerRec)
+		}
+		rec := &vpa_types.RecommendedPodResources{
+			ContainerRecommendations: []vpa_types.RecommendedContainerResources{containerRec},
+		}
+		vpa.Status.Recommendation = rec
+	}
+}
+
+// WithStatus allows setting the status field (e.g., Recommendation) on the VPA
+func WithStatus(options ...VPAOption) VPAOption {
+	return func(vpa *vpa_types.VerticalPodAutoscaler) {
+		for _, opt := range options {
+			opt(vpa)
+		}
+	}
+}
+
+func WithTargetCPU(q resource.Quantity) VPAContainerRecommendationOption {
+	return func(rec *vpa_types.RecommendedContainerResources) {
+		if rec.Target == nil {
+			rec.Target = corev1.ResourceList{}
+		}
+		rec.Target[corev1.ResourceCPU] = q
+	}
+}
+
+func WithTargetMemory(q resource.Quantity) VPAContainerRecommendationOption {
+	return func(rec *vpa_types.RecommendedContainerResources) {
+		if rec.Target == nil {
+			rec.Target = corev1.ResourceList{}
+		}
+		rec.Target[corev1.ResourceMemory] = q
+	}
+}
+
 // CreateTestWorkload creates a test workload object for testing
 func CreateTestWorkload(name, namespace string, restartedAt string) map[string]interface{} {
 	workload := map[string]interface{}{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
 		"metadata": map[string]interface{}{
 			"name":      name,
 			"namespace": namespace,
