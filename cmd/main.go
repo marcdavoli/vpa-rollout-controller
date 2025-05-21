@@ -57,7 +57,7 @@ func main() {
 	cooldownPeriodDuration := *cooldownPeriodDurationDefault
 	loopWaitTimeDuration := time.Duration(*loopWaitTimeSecondsDefault) * time.Second
 	patchOperationFieldManager := *patchOperationFieldManagerDefault
-	log.Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffTriggerPercentage, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeDuration, "patchOperationFieldManager", patchOperationFieldManager)
+	log.Info("Starting VPA Rollout Controller with parameters", "diffTriggerPercentage", diffTriggerPercentage, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeDuration, "patchOperationFieldManager", patchOperationFieldManager)
 
 	// Setup client-go
 	config, err := rest.InClusterConfig()

@@ -55,7 +55,7 @@ func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 	if vpa.Status.Recommendation != nil && vpa.Status.Recommendation.ContainerRecommendations != nil {
 		for _, recommendation := range vpa.Status.Recommendation.ContainerRecommendations {
 			if recommendation.Target != nil {
-				log.Info("Processing VPA Recommendation", "ContainerName", recommendation.ContainerName, "ContainerTargetCPU", recommendation.Target.Cpu(), "ContainerTargetMemory", recommendation.Target.Memory())
+				log.Debug("Processing VPA Recommendation", "ContainerName", recommendation.ContainerName, "ContainerTargetCPU", recommendation.Target.Cpu(), "ContainerTargetMemory", recommendation.Target.Memory())
 				if recommendation.Target.Cpu() != nil && recommendation.Target.Memory() != nil {
 
 					// Get the current CPU and Memory request from the target workload
@@ -69,11 +69,10 @@ func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 					var containerCPU, containerMemory *resource.Quantity
 					for _, container := range pod.Spec.Containers {
 						if container.Name == recommendation.ContainerName {
-							log.Debug("Found container in pod spec", "ContainerName", container.Name)
 							containerResources := container.Resources
 							containerCPU = containerResources.Requests.Cpu()
 							containerMemory = containerResources.Requests.Memory()
-							log.Debug("Container Spec values", "ContainerCPURequests", containerCPU.String(), "ContainerMemoryRequests", containerMemory.String())
+							log.Debug("Container Spec values", "vpaName", vpa.Name, "vpaNamespace", vpa.Namespace, "podName", pod.Name, "ContainerName", container.Name, "ContainerCPURequests", containerCPU.String(), "ContainerMemoryRequests", containerMemory.String())
 						}
 					}
 
