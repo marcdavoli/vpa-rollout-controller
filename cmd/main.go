@@ -37,7 +37,7 @@ const (
 	// Default values for command-line flags
 	diffTriggerPercentageDefault      = 10
 	cooldownPeriodDurationDefault     = 15 * time.Minute
-	loopWaitTimeSecondsDefault        = 10
+	loopWaitTimeSecondsDefault        = 30
 	patchOperationFieldManagerDefault = "flux-client-side-apply"
 )
 
@@ -55,7 +55,7 @@ func main() {
 	flag.Parse()
 	diffTriggerPercentage := *diffTriggerPercentageDefault
 	cooldownPeriodDuration := *cooldownPeriodDurationDefault
-	loopWaitTimeSeconds := time.Duration(*loopWaitTimeSecondsDefault) * time.Second
+	loopWaitTimeDuration := time.Duration(*loopWaitTimeSecondsDefault) * time.Second
 	patchOperationFieldManager := *patchOperationFieldManagerDefault
 	log.Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffTriggerPercentage, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeSeconds, "patchOperationFieldManager", patchOperationFieldManager)
 
@@ -125,6 +125,6 @@ func main() {
 			}
 		}
 
-		time.Sleep(loopWaitTimeSeconds)
+		time.Sleep(loopWaitTimeDuration)
 	}
 }

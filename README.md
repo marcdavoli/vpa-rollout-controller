@@ -55,9 +55,9 @@ The following table lists the CLI flags supported by the vpa-rollout-controller:
 
 | Flag | Type | Default Value | Description |
 |------|------|---------------|-------------|
-| `diffPercentTrigger` | int | `10` | Percentage difference between VPA recommendation and current resources that triggers a rollout |
-| `cooldownPeriod` | duration | `15m` | Cooldown period before triggering another rollout for the same workload |
-| `loopWaitTimeSeconds` | int | `30` | Time in seconds to wait between each loop iteration |
+| `diffTriggerPercentage` | int | `10` | Percentage difference between VPA recommendation and current resources that triggers a rollout. |
+| `cooldownPeriodDuration` | duration | `15m` | Cooldown period before allowing another rollout to occur for the same workload. |
+| `loopWaitTimeSeconds` | int | `30` | Time in seconds to wait between each loop iteration. |
 | `patchOperationFieldManager` | string | `flux-client-side-apply` | Field manager name for patch operations. Useful for telling GitOps tools to not reconciling away 'rollout' annotations. |
 
 ## Annotations
