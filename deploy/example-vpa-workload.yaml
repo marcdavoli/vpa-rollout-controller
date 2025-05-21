@@ -61,11 +61,3 @@ spec:
             memory: 1Gi
           limits:
             memory: 1Gi
-      # - name: sidecar
-      #   image: dockersamples/examplevotingapp_vote
-      #   resources:
-      #     requests:
-      #       cpu: "1"
-      #       memory: 200Mi
-      #     limits:
-      #       memory: 200Mi
