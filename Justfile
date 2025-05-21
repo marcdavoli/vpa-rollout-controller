@@ -17,7 +17,7 @@ dev:
     ./scripts/create-kind-cluster.sh
 
 # Runs the controller in a local kind cluster
-run arch=DEFAULT_ARCH:
+run arch=DEFAULT_ARCH: test
     ./scripts/build-and-run-controller-locally.sh {{arch}}
 
 # Builds the docker image for the selected platform.
@@ -29,5 +29,5 @@ docker-build arch=DEFAULT_ARCH tag=LATEST:
     -t {{APP_NAME}}:{{tag}} .
 
 # Pushes the docker image to Google Artifact Registry
-push-to-gar arch=DEFAULT_ARCH TAG=LATEST:
+push-to-gar arch=DEFAULT_ARCH TAG=LATEST: test
     ./scripts/push-to-gar.sh {{arch}} {{TAG}}
