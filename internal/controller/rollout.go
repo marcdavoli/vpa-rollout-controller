@@ -86,7 +86,7 @@ func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 					cpuDiffPercent := cpuDiff / vpaTargetCpuQuantity.AsApproximateFloat64() * 100
 					memoryDiff := math.Abs(containerMemory.AsApproximateFloat64() - vpaTargetMemoryQuantity.AsApproximateFloat64())
 					memoryDiffPercent := memoryDiff / vpaTargetMemoryQuantity.AsApproximateFloat64() * 100
-					log.Info("Calculated diff between VPA Resource Target and Workload Resources", "CPUDiff", cpuDiff, "CPUDiffPercent", cpuDiffPercent, "MemoryDiff", memoryDiff, "MemoryDiffPercent", memoryDiffPercent)
+					log.Debug("Calculated diff between VPA Resource Target and Workload Resources", "CPUDiff", cpuDiff, "CPUDiffPercent", cpuDiffPercent, "MemoryDiff", memoryDiff, "MemoryDiffPercent", memoryDiffPercent)
 
 					// If difference between current and target CPU or Memory is greater than the threshold, trigger a rollout
 					if cpuDiffPercent > float64(effectiveDiffPercentTrigger) || memoryDiffPercent > float64(effectiveDiffPercentTrigger) {

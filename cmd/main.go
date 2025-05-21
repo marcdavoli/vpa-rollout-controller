@@ -44,8 +44,8 @@ const (
 func main() {
 
 	ctx := context.Background()
-
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	slog.SetDefault(log)
 
 	// Command-line flags with default values
 	diffTriggerPercentageDefault := flag.Int("diffTriggerPercentage", diffTriggerPercentageDefault, "Percentage difference to trigger rollout")
@@ -57,7 +57,7 @@ func main() {
 	cooldownPeriodDuration := *cooldownPeriodDurationDefault
 	loopWaitTimeDuration := time.Duration(*loopWaitTimeSecondsDefault) * time.Second
 	patchOperationFieldManager := *patchOperationFieldManagerDefault
-	log.Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffTriggerPercentage, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeSeconds, "patchOperationFieldManager", patchOperationFieldManager)
+	log.Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffTriggerPercentage, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeDuration, "patchOperationFieldManager", patchOperationFieldManager)
 
 	// Setup client-go
 	config, err := rest.InClusterConfig()

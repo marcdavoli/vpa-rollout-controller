@@ -31,7 +31,7 @@ func CooldownHasElapsed(ctx context.Context, clientset kubernetes.Interface, vpa
 	} else {
 		effectiveCooldownPeriodDuration = cooldownPeriodDuration
 	}
-	log.Info("Effective cooldown period duration", "vpa", vpa.Name, "vpaNamespace", vpa.Namespace, "cooldownPeriodDuration", effectiveCooldownPeriodDuration)
+	log.Debug("Effective cooldown period duration", "vpa", vpa.Name, "vpaNamespace", vpa.Namespace, "cooldownPeriodDuration", effectiveCooldownPeriodDuration)
 
 	// Check if the annotation 'kubectl.kubernetes.io/restartedAt' is present in the workload
 	timestamp, timestampFound, err := unstructured.NestedString(workload, "spec", "template", "metadata", "annotations", "kubectl.kubernetes.io/restartedAt")
@@ -42,7 +42,7 @@ func CooldownHasElapsed(ctx context.Context, clientset kubernetes.Interface, vpa
 
 	if timestampFound {
 		// Check if the timestamp is older than the cooldown period
-		log.Info("Found timestamp", "WorkloadName", workloadName, "workloadNamespace", workloadNamespace, "lastRestartedAt", timestamp)
+		log.Debug("Found timestamp", "WorkloadName", workloadName, "workloadNamespace", workloadNamespace, "lastRestartedAt", timestamp)
 		lastRestartedAt, err := time.Parse(time.RFC3339, timestamp)
 		if err != nil {
 			log.Error("Error parsing timestamp for Workload", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace, "timestamp", timestamp)
@@ -53,7 +53,7 @@ func CooldownHasElapsed(ctx context.Context, clientset kubernetes.Interface, vpa
 			log.Info("Cooldown period has not elapsed for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "elapsedTime", elapsed.Round(time.Second), "cooldownPeriodDuration", effectiveCooldownPeriodDuration)
 			return false, nil
 		}
-		log.Info("Cooldown period has elapsed for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "elapsedTime", elapsed.Round(time.Second), "cooldownPeriodDuration", effectiveCooldownPeriodDuration)
+		log.Debug("Cooldown period has elapsed for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "elapsedTime", elapsed.Round(time.Second), "cooldownPeriodDuration", effectiveCooldownPeriodDuration)
 	}
 
 	// At this point, either no timestamp was found, or cooldown has elapsed, so we need to check pods' cooldown
@@ -83,12 +83,12 @@ func cooldownElapsedForWorkloadPods(ctx context.Context, clientset kubernetes.In
 	}
 	for _, pod := range podList.Items {
 		podAge := time.Since(pod.GetCreationTimestamp().Time)
-		log.Info("Pod age", "podName", pod.Name, "podNamespace", pod.Namespace, "podAge", podAge.Round(time.Second))
+		log.Debug("Pod age", "podName", pod.Name, "podNamespace", pod.Namespace, "podAge", podAge.Round(time.Second))
 		if podAge < cooldownPeriodDuration {
 			log.Info("Workload's Pod age is less than cooldown period", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "podName", pod.Name, "podNamespace", pod.Namespace, "podAge", podAge.Round(time.Second), "cooldownPeriodDuration", cooldownPeriodDuration)
 			return false, nil
 		}
 	}
-	log.Info("Cooldown period has elapsed for workload's pods", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "cooldownPeriodDuration", cooldownPeriodDuration)
+	log.Debug("Cooldown period has elapsed for workload's pods", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "cooldownPeriodDuration", cooldownPeriodDuration)
 	return true, nil
 }
