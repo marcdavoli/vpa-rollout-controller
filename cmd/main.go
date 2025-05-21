@@ -35,9 +35,9 @@ import (
 
 const (
 	// Default values for command-line flags
-	diffPercentTriggerDefault         = 10
+	diffTriggerPercentageDefault      = 10
 	cooldownPeriodDurationDefault     = 15 * time.Minute
-	loopWaitTimeInSecondsDefault      = 10
+	loopWaitTimeSecondsDefault        = 10
 	patchOperationFieldManagerDefault = "flux-client-side-apply"
 )
 
@@ -48,16 +48,16 @@ func main() {
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	// Command-line flags with default values
-	diffPercentTriggerDefault := flag.Int("diffPercentTrigger", diffPercentTriggerDefault, "Percentage difference to trigger rollout")
-	cooldownPeriodDurationDefault := flag.Duration("cooldownPeriod", cooldownPeriodDurationDefault, "Cooldown period before triggering another rollout")
-	loopWaitTimeInSecondsDefault := flag.Int("loopWaitTime", loopWaitTimeInSecondsDefault, "Time to wait between each loop iteration")
+	diffTriggerPercentageDefault := flag.Int("diffTriggerPercentage", diffTriggerPercentageDefault, "Percentage difference to trigger rollout")
+	cooldownPeriodDurationDefault := flag.Duration("cooldownPeriodDuration", cooldownPeriodDurationDefault, "Cooldown period before triggering another rollout")
+	loopWaitTimeSecondsDefault := flag.Int("loopWaitTimeSeconds", loopWaitTimeSecondsDefault, "Time to wait between each loop iteration")
 	patchOperationFieldManagerDefault := flag.String("patchOperationFieldManager", patchOperationFieldManagerDefault, "Field manager for patch operations")
 	flag.Parse()
-	diffPercentTrigger := *diffPercentTriggerDefault
+	diffTriggerPercentage := *diffTriggerPercentageDefault
 	cooldownPeriodDuration := *cooldownPeriodDurationDefault
-	loopWaitTimeDuration := time.Duration(*loopWaitTimeInSecondsDefault) * time.Second
+	loopWaitTimeSeconds := time.Duration(*loopWaitTimeSecondsDefault) * time.Second
 	patchOperationFieldManager := *patchOperationFieldManagerDefault
-	log.Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffPercentTrigger, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeDuration, "patchOperationFieldManager", patchOperationFieldManager)
+	log.Info("Starting VPA Rollout Controller with parameters", "diffPercentTrigger", diffTriggerPercentage, "cooldownPeriodDuration", cooldownPeriodDuration, "loopWaitTimeDuration", loopWaitTimeSeconds, "patchOperationFieldManager", patchOperationFieldManager)
 
 	// Setup client-go
 	config, err := rest.InClusterConfig()
@@ -110,7 +110,7 @@ func main() {
 			}
 			if cooldownHasElapsed {
 				// Check if a rollout is needed
-				rolloutIsNeeded, err := c.RolloutIsNeeded(ctx, clientset, vpa, workload, diffPercentTrigger)
+				rolloutIsNeeded, err := c.RolloutIsNeeded(ctx, clientset, vpa, workload, diffTriggerPercentage)
 				if err != nil {
 					log.Error("Error checking if rollout is needed", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 					continue
@@ -125,6 +125,6 @@ func main() {
 			}
 		}
 
-		time.Sleep(loopWaitTimeDuration)
+		time.Sleep(loopWaitTimeSeconds)
 	}
 }
