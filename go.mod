@@ -3,6 +3,7 @@ module github.com/influxdata/vpa-rollout-controller
 go 1.24.2
 
 require (
+	dario.cat/mergo v1.0.2
 	k8s.io/api v0.33.0
 	k8s.io/apimachinery v0.33.0
 	k8s.io/autoscaler/vertical-pod-autoscaler v1.3.1

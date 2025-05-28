@@ -25,6 +25,7 @@ This controller actually works in conjunction with the upstream VPA components, 
   - [CLI Flags](#cli-flags)
   - [Annotations](#annotations)
   - [Scalability](#scalability)
+  - [TO DO](#to-do)
 
 ## Running Locally
 This app is meant to run as a pod inside a Kubernetes cluster, for which it will 
@@ -66,9 +67,16 @@ These annotations can be added to `VerticalPodAutoscaler` resources to customize
 
 | Annotation | Type | Description |
 |------------|------|-------------|
-| `vpa-rollout.influxdata.io/enabled` | boolean | Required annotation to enable a VPA to be managed by the controller. Must be set to `"true"` |
-| `vpa-rollout.influxdata.io/cooldown-period` | duration | Override the default cooldown period for a specific VPA. Accepts a valid Go duration string (e.g., `"15m"`, `"1h"`) |
-| `vpa-rollout.influxdata.io/diff-percent-trigger` | int | Override the default percentage difference that triggers a rollout for a specific VPA |
+| `vpa-rollout.influxdata.io/enabled` | boolean | Required annotation to enable a VPA to be managed by the controller. Must be set to `"true"`. |
+| `vpa-rollout.influxdata.io/cooldown-period` | duration | Override the default cooldown period for a specific VPA. Accepts a valid Go duration string (e.g., `"15m"`, `"1h"`). |
+| `vpa-rollout.influxdata.io/diff-percent-trigger` | int | Override the default percentage difference that triggers a rollout for a specific VPA. |
+| `vpa-rollout.influxdata.io/surge-buffer-enabled` | boolean | Enables the surge buffer feature for the VPA's target workload. When set to `"true"`, a surge buffer workload is created during rollout. |
+| `vpa-rollout.influxdata.io/number-of-surge-buffer-pods` | int | Overrides the number of surge buffer pods to create for the VPA's target workload during a rollout. Default is `1`. |
 
 ## Scalability
 `vpa-rollout-controller` has not been tested in large clusters, with more than 10 VerticalPodAutoscaler resources.
+
+
+## TO DO
+- Change the fact that func workloadPodsAreHealthy() in workload.go considers this unhealthy: pods of the same workload that have different "Resources"
+- Test with a StatefulSet + PVC

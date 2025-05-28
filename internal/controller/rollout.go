@@ -106,7 +106,7 @@ func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 }
 
 // Patches the workload resource to trigger a rollout using the annotation 'kubectl.kubernetes.io/restartedAt'
-func TriggerRollout(ctx context.Context, workload map[string]interface{}, dynamicClient dynamic.Interface, patchOperationFieldManager string) error {
+func triggerRolloutRestart(ctx context.Context, workload map[string]interface{}, dynamicClient dynamic.Interface, patchOperationFieldManager string) error {
 
 	log := slog.Default()
 
@@ -127,5 +127,34 @@ func TriggerRollout(ctx context.Context, workload map[string]interface{}, dynami
 	} else {
 		log.Info("Rollout triggered successfully", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "timestamp", currentTime)
 	}
+	return nil
+}
+
+// Governs the end-to-end rollout process for a workload
+func TriggerRollout(ctx context.Context, workload map[string]interface{}, vpa v1.VerticalPodAutoscaler, dynamicClient dynamic.Interface, patchOperationFieldManager string) error {
+
+	log := slog.Default()
+
+	workloadName := workload["metadata"].(map[string]interface{})["name"]
+	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
+
+	log.Info("Triggering rollout for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+
+	// If the VPA has the surge buffer enabled, create the surge buffer workload
+	if vpa.Annotations != nil && vpa.Annotations[utils.VPAAnnotationSurgeBufferEnabled] == "true" {
+		err := CreateSurgeBufferWorkload(ctx, dynamicClient, vpa, workload)
+		if err != nil {
+			log.Error("Error creating surge buffer workload", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+			return fmt.Errorf("error creating surge buffer workload for %s: %v", workloadName, err)
+		}
+		log.Info("Surge buffer workload created successfully", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+	}
+
+	err := triggerRolloutRestart(ctx, workload, dynamicClient, patchOperationFieldManager)
+	if err != nil {
+		log.Error("Error triggering rollout for workload", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return fmt.Errorf("error triggering rollout for workload %s: %v", workloadName, err)
+	}
+
 	return nil
 }

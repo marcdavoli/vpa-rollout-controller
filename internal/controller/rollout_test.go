@@ -42,8 +42,9 @@ func TestTriggerRollout(t *testing.T) {
 	dynamicClient := &testutil.FakeDynamicClient{}
 	workload := testutil.CreateTestWorkload("my-workload", "default", "2025-01-01T00:00:00Z")
 	patchOperationFieldManager := "test-field-manager"
+	vpa := testutil.CreateTestVPA()
 
-	err := TriggerRollout(ctx, workload, dynamicClient, patchOperationFieldManager)
+	err := TriggerRollout(ctx, workload, vpa, dynamicClient, patchOperationFieldManager)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}

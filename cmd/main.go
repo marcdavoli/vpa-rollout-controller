@@ -116,7 +116,7 @@ func main() {
 					continue
 				}
 				if rolloutIsNeeded {
-					err := c.TriggerRollout(ctx, workload, dynamicClient, patchOperationFieldManager)
+					err := c.TriggerRollout(ctx, workload, vpa, dynamicClient, patchOperationFieldManager)
 					if err != nil {
 						log.Error("Error triggering rollout", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 						continue
