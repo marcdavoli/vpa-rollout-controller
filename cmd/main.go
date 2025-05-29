@@ -1,20 +1,3 @@
-/*
-Copyright 2016 The Kubernetes Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-// Note: the example only works with the code within the same release/branch.
 package main
 
 import (
@@ -101,6 +84,56 @@ func main() {
 			}
 			workloadName := workload["metadata"].(map[string]interface{})["name"]
 			workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
+
+			rolloutStatus := c.GetRolloutStatus(ctx, vpa)
+			// Check if there is a pending rollout that needs to be triggered
+			if rolloutStatus == "pending" {
+				log.Info("Rollout is pending for VPA", "VPAName", vpa.Name, "VPANamespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
+
+				// Check if surge buffer is ready
+
+				// If it is, trigger the rollout restart and change the VPA's rollout status to "in-progress"
+				err := c.TriggerPendingRollout(ctx, vpa, workload, dynamicClient, patchOperationFieldManager)
+				if err != nil {
+					log.Error("Error triggering pending rollout", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+					continue
+				}
+				log.Info("Pending rollout triggered", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+			}
+
+			// Check if an in-progress rollout is completed
+			if rolloutStatus == "in-progress" {
+				// Check if the workload pods are healthy and have restarted since the last rollout
+				rolloutIsCompleted, err := c.RolloutIsCompleted(ctx, vpa, workload, clientset)
+				if err != nil {
+					log.Error("Error checking if rollout is completed", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+					continue
+				}
+				if !rolloutIsCompleted {
+					log.Info("Rollout is still in progress for VPA", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+					continue
+				}
+
+				// Cleanup the buffer workload if it exists
+				surgeBufferWorkloadExists, err := c.SurgeBufferWorkloadExists(ctx, dynamicClient, vpa, workload)
+				if err != nil {
+					log.Error("Error checking if surge buffer workload exists", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+					continue
+				}
+				if surgeBufferWorkloadExists {
+					log.Info("Surge buffer workload exists, deleting it", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+					err := c.DeleteSurgeBufferWorkload(ctx, dynamicClient, vpa, workload)
+					if err != nil {
+						log.Error("Error deleting surge buffer workload", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+						continue
+					}
+					log.Info("Surge buffer workload deleted", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+				}
+
+				// Set the VPA's rollout status to "complete"
+				c.SetRolloutStatus(ctx, vpa, dynamicClient, patchOperationFieldManager, "complete")
+				log.Info("Rollout completed for VPA", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+			}
 
 			// Check if the cooldown period has elapsed
 			cooldownHasElapsed, err := c.CooldownHasElapsed(ctx, clientset, vpa, workload, cooldownPeriodDuration)
