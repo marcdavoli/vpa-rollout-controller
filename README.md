@@ -120,14 +120,15 @@ flowchart TD
     
     CheckStatus -->|Pending| CheckBufferReady{Surge Buffer<br/>Ready?}
     CheckBufferReady -->|No| NextVPA
-    CheckBufferReady -->|Yes| TriggerPending[Trigger Pending Rollout<br/>Set status to 'in-progress']
-    TriggerPending --> NextVPA
+    CheckBufferReady -->|Yes| TriggerPending[Trigger Rollout]
+    TriggerPending --> setstatusToInProgress[Set Rollout Status<br/>to 'in-progress']
+    setstatusToInProgress --> NextVPA
     
     CheckStatus -->|In-Progress| CheckCompleted{Rollout Has<br/>Completed?}
     CheckCompleted -->|No| NextVPA
     CheckCompleted -->|Yes| CleanupBuffer{Surge Buffer<br/>Exists?}
     CleanupBuffer -->|Yes| DeleteBuffer[Delete Surge Buffer]
-    CleanupBuffer -->|No| SetComplete[Set Status to 'complete']
+    CleanupBuffer -->|No| SetComplete[Set Rollout Status<br/>to 'complete']
     DeleteBuffer --> SetComplete
     SetComplete --> NextVPA
     
@@ -139,7 +140,7 @@ flowchart TD
     CheckRolloutNeeded -->|No| NextVPA
     CheckRolloutNeeded -->|Yes| CreateSurgeBufferDecision{Workload Requires<br/>Surge Buffer?}
     CreateSurgeBufferDecision -->|Yes| CreateSurgeBuffer[Create Surge Buffer]
-    CreateSurgeBuffer --> SetPendingStatus[Set Rollout Status to 'pending']
+    CreateSurgeBuffer --> SetPendingStatus[Set Rollout Status<br/>to 'pending']
     CreateSurgeBufferDecision -->|No| DoTriggerRollout[Trigger Rollout]
     DoTriggerRollout --> NextVPA
     SetPendingStatus --> NextVPA
@@ -154,9 +155,8 @@ flowchart TD
     classDef action fill:#e8f5e8
     
     class Start startEnd
-    class ListVPAs,GetWorkload,TriggerPending,DeleteBuffer,SetComplete,TriggerRollout,WaitLoop process
-    class CheckEligible,CheckStatus,CheckCompleted,CleanupBuffer,CheckCooldown,CheckRolloutNeeded,VPALoop decision
-    class NextVPA action
+    class ListVPAs,WaitLoop,NextVPA,DeleteBuffer,SetComplete,TriggerPending,TriggerRollout,SetPendingStatus,DoTriggerRollout,CreateSurgeBuffer,setstatusToInProgress process
+    class CheckEligible,CheckStatus,CheckCompleted,CleanupBuffer,CheckCooldown,CheckRolloutNeeded,VPALoop,CheckBufferReady,CreateSurgeBufferDecision decision
 ```
 
 **Key Flow Characteristics:**
