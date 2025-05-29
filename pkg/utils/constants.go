@@ -4,6 +4,9 @@ const (
 	// Enables the vpa-rollout controller to operate on the VPA
 	VPAAnnotationEnabled = "vpa-rollout.influxdata.io/enabled"
 
+	// The latest rollout status of the VPA
+	VPAAnnotationRolloutStatus = "vpa-rollout.influxdata.io/rollout-status"
+
 	// Override the cooldown period between rollouts for a specific VPA
 	VPAAnnotationCooldownPeriod = "vpa-rollout.influxdata.io/cooldown-period"
 
@@ -20,14 +23,12 @@ const (
 	// Default number of surge buffer pods if not specified in the VPA annotation
 	DefaultSurgeBufferReplicas = "1"
 
-	// Annotation to indicate that the Pod is a "surge-buffer" pod
-	PodAnnotationSurgeBufferPod = "vpa-rollout.influxdata.io/surge-buffer"
+	// Label to indicate that the Pod is a "surge-buffer" pod
+	PodLabelSurgeBufferPod = "vpa-rollout.influxdata.io/surge-buffer"
 )
 
 var (
 	SurgeBufferPodAnnotations = map[string]interface{}{
-		PodAnnotationSurgeBufferPod:                      "true",
 		"cluster-autoscaler.kubernetes.io/safe-to-evict": "false", // Prevent cluster autoscaler from evicting this pod
-		"sidecar.istio.io/inject":                        "false",
 	}
 )
