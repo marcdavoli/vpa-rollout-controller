@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"math"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/influxdata/vpa-rollout-controller/pkg/utils"
@@ -105,56 +104,84 @@ func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 	return false, fmt.Errorf("error verifying if rollout is needed for VPA %s", vpa.Name)
 }
 
-// Patches the workload resource to trigger a rollout using the annotation 'kubectl.kubernetes.io/restartedAt'
-func triggerRolloutRestart(ctx context.Context, workload map[string]interface{}, dynamicClient dynamic.Interface, patchOperationFieldManager string) error {
+// Get the current rollout status of the VPA from its annotation
+func GetRolloutStatus(ctx context.Context, vpa v1.VerticalPodAutoscaler) string {
+	if vpa.Annotations == nil {
+		return ""
+	}
+	return vpa.Annotations[utils.VPAAnnotationRolloutStatus]
+}
 
+// Set the VPA annotation that reflects the latest status of a rollout
+func SetRolloutStatus(ctx context.Context, vpa v1.VerticalPodAutoscaler, dynamicClient dynamic.Interface, patchOperationFieldManager string, status string) error {
 	log := slog.Default()
 
-	workloadName := workload["metadata"].(map[string]interface{})["name"]
-	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
-
-	currentTime := time.Now().Format(time.RFC3339)
-	patchData := fmt.Sprintf(`{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"%s"}}}}}`, currentTime)
+	patchData := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`, utils.VPAAnnotationRolloutStatus, status)
 	gvr := schema.GroupVersionResource{
-		Group:    strings.SplitN(workload["apiVersion"].(string), "/", 2)[0],
-		Version:  strings.SplitN(workload["apiVersion"].(string), "/", 2)[1],
-		Resource: strings.ToLower(workload["kind"].(string) + "s"),
+		Group:    "autoscaling.k8s.io",
+		Version:  "v1",
+		Resource: "verticalpodautoscalers",
 	}
-	_, err := dynamicClient.Resource(gvr).Namespace(workloadNamespace.(string)).Patch(ctx, workloadName.(string), types.MergePatchType, []byte(patchData), metav1.PatchOptions{FieldManager: patchOperationFieldManager})
+	_, err := dynamicClient.Resource(gvr).Namespace(vpa.Namespace).Patch(ctx, vpa.Name, types.MergePatchType, []byte(patchData), metav1.PatchOptions{FieldManager: patchOperationFieldManager})
 	if err != nil {
-		log.Error("Error triggering rollout on workload", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace, "Group", gvr.Group, "Version", gvr.Version, "Resource", gvr.Resource, "patchData", patchData)
-		return err
-	} else {
-		log.Info("Rollout triggered successfully", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "timestamp", currentTime)
+		log.Error("Error triggering pending rollout for workload", "err", err, "vpaName", vpa.Name, "vpaNamespace", vpa.Namespace)
+		return fmt.Errorf("error triggering pending rollout for workload %s: %v", vpa.Name, err)
 	}
+
+	log.Info("Triggering pending rollout for workload", "VPA", vpa.Name, "VPA Namespace", vpa.Namespace)
+
 	return nil
 }
 
-// Governs the end-to-end rollout process for a workload
-func TriggerRollout(ctx context.Context, workload map[string]interface{}, vpa v1.VerticalPodAutoscaler, dynamicClient dynamic.Interface, patchOperationFieldManager string) error {
-
+// Check if the workload pods are ready and restarted since the last rollout
+func RolloutIsCompleted(ctx context.Context, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}, clientset kubernetes.Interface) (bool, error) {
 	log := slog.Default()
-
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
 	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
-	log.Info("Triggering rollout for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
-
-	// If the VPA has the surge buffer enabled, create the surge buffer workload
-	if vpa.Annotations != nil && vpa.Annotations[utils.VPAAnnotationSurgeBufferEnabled] == "true" {
-		err := CreateSurgeBufferWorkload(ctx, dynamicClient, vpa, workload)
-		if err != nil {
-			log.Error("Error creating surge buffer workload", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
-			return fmt.Errorf("error creating surge buffer workload for %s: %v", workloadName, err)
-		}
-		log.Info("Surge buffer workload created successfully", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
-	}
-
-	err := triggerRolloutRestart(ctx, workload, dynamicClient, patchOperationFieldManager)
+	// Check if the workload's pods are healthy
+	healthy, err := workloadPodsAreHealthy(ctx, workload, clientset)
 	if err != nil {
-		log.Error("Error triggering rollout for workload", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
-		return fmt.Errorf("error triggering rollout for workload %s: %v", workloadName, err)
+		log.Error("Error checking workload pods health", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return false, err
+	}
+	if !healthy {
+		log.Info("Workload pods are not healthy, rollout is not complete", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return false, nil
 	}
 
-	return nil
+	// Check if the pods' age is less than the time since the last rollout
+	podList, err := getTargetWorkloadPods(ctx, workload, clientset)
+	if err != nil {
+		log.Error("Error getting pods for workload", "error", err.Error(), "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return false, err
+	}
+	for _, pod := range podList.Items {
+		var lastRolloutTimeStr string
+		if templateAnnotations, ok := workload["spec"].(map[string]interface{})["template"].(map[string]interface{})["metadata"].(map[string]interface{})["annotations"].(map[string]interface{}); ok {
+			if restartedAt, ok := templateAnnotations["kubectl.kubernetes.io/restartedAt"]; ok && restartedAt != nil {
+				lastRolloutTimeStr, _ = restartedAt.(string)
+			}
+		}
+		if lastRolloutTimeStr == "" {
+			log.Info("No last rollout time found in workload template annotations, assuming rollout is not complete", "podName", pod.Name, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+			return false, nil
+		}
+		lastRolloutTime, err := time.Parse(time.RFC3339, lastRolloutTimeStr)
+		if err != nil {
+			log.Error("Error parsing last rollout time from pod annotations", "err", err, "podName", pod.Name, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+			return false, err
+		}
+		podAge := time.Since(pod.GetCreationTimestamp().Time)
+		if podAge < time.Since(lastRolloutTime) {
+			log.Info("Pod has been restarted since the last rollout", "podName", pod.Name, "podStartTime", pod.Status.StartTime, "lastRolloutTime", lastRolloutTime, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+			return true, nil
+		} else {
+			log.Info("Pod has not been restarted since the last rollout", "podName", pod.Name, "podStartTime", pod.Status.StartTime, "lastRolloutTime", lastRolloutTime, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+			return false, nil
+		}
+	}
+
+	log.Info("Rollout is still in progress for VPA", "VPAName", vpa.Name, "VPANameSpace", vpa.Namespace)
+	return false, nil
 }
