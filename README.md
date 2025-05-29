@@ -108,7 +108,7 @@ The following diagram illustrates the main processing flow of the VPA Rollout Co
 
 ```mermaid
 flowchart TD
-    Start([START]) --> ListVPAs[List All VPAs]
+    Start --> ListVPAs[List All VPAs]
     
     ListVPAs --> VPALoop{For Each VPA}
     
@@ -116,25 +116,33 @@ flowchart TD
     CheckEligible -->|No| NextVPA[Continue to Next VPA]
     NextVPA --> VPALoop
     
-    CheckEligible -->|Yes| CheckPending{Rollout<br/>Pending?}
+    CheckEligible -->|Yes| CheckStatus{Check Rollout<br/>Status}
     
-    CheckPending -->|Yes| HandlePending[Handle Pending Rollout<br/>TODO: Check surge buffer ready<br/>TODO: Trigger restart]
-    HandlePending --> CheckSurgeBuffer
+    CheckStatus -->|Pending| CheckBufferReady{Surge Buffer<br/>Ready?}
+    CheckBufferReady -->|No| NextVPA
+    CheckBufferReady -->|Yes| TriggerPending[Trigger Pending Rollout<br/>Set status to 'in-progress']
+    TriggerPending --> NextVPA
     
-    CheckPending -->|No| CheckSurgeBuffer{Surge Buffer<br/>Workload Exists?}
+    CheckStatus -->|In-Progress| CheckCompleted{Rollout Has<br/>Completed?}
+    CheckCompleted -->|No| NextVPA
+    CheckCompleted -->|Yes| CleanupBuffer{Surge Buffer<br/>Exists?}
+    CleanupBuffer -->|Yes| DeleteBuffer[Delete Surge Buffer]
+    CleanupBuffer -->|No| SetComplete[Set Status to 'complete']
+    DeleteBuffer --> SetComplete
+    SetComplete --> NextVPA
     
-    CheckSurgeBuffer -->|Yes| DeleteSurgeBuffer[Delete Surge Buffer Workload]
-    DeleteSurgeBuffer --> CheckCooldown
-    
-    CheckSurgeBuffer -->|No| CheckCooldown{Cooldown Period<br/>Has Elapsed?}
+    CheckStatus -->|Complete or None| CheckCooldown{Cooldown Period<br/>Has Elapsed?}
     
     CheckCooldown -->|No| NextVPA
-    CheckCooldown -->|Yes| CheckRolloutNeeded{Rollout<br/>Needed?}
+    CheckCooldown -->|Yes| CheckRolloutNeeded{Rollout Is<br/>Needed?}
     
     CheckRolloutNeeded -->|No| NextVPA
-    CheckRolloutNeeded -->|Yes| TriggerRollout[Trigger Rollout]
-    
-    TriggerRollout --> NextVPA
+    CheckRolloutNeeded -->|Yes| CreateSurgeBufferDecision{Workload Requires<br/>Surge Buffer?}
+    CreateSurgeBufferDecision -->|Yes| CreateSurgeBuffer[Create Surge Buffer]
+    CreateSurgeBuffer --> SetPendingStatus[Set Rollout Status to 'pending']
+    CreateSurgeBufferDecision -->|No| DoTriggerRollout[Trigger Rollout]
+    DoTriggerRollout --> NextVPA
+    SetPendingStatus --> NextVPA
     
     VPALoop -->|All VPAs Processed| WaitLoop[Sleep for<br/>loopWaitTimeDuration]
     WaitLoop --> ListVPAs
@@ -145,9 +153,9 @@ flowchart TD
     classDef decision fill:#fff3e0
     classDef action fill:#e8f5e8
     
-    class Start,MainLoop startEnd
-    class ListVPAs,HandlePending,DeleteSurgeBuffer,TriggerRollout,WaitLoop process
-    class CheckEligible,CheckPending,CheckSurgeBuffer,CheckCooldown,CheckRolloutNeeded,VPALoop decision
+    class Start startEnd
+    class ListVPAs,GetWorkload,TriggerPending,DeleteBuffer,SetComplete,TriggerRollout,WaitLoop process
+    class CheckEligible,CheckStatus,CheckCompleted,CleanupBuffer,CheckCooldown,CheckRolloutNeeded,VPALoop decision
     class NextVPA action
 ```
 
