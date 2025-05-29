@@ -62,17 +62,20 @@ func getTargetWorkloadPods(ctx context.Context, workload map[string]interface{},
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
 	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
-	// Get the selector labels from the workload
 	selectorLabels, _, err := unstructured.NestedStringMap(workload, "spec", "selector", "matchLabels")
 	if err != nil {
 		log.Error("Error getting selector labels from workload", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
 		return nil, err
 	}
 
-	// Get the pods using the selector labels and typedClient
-	podList, err := clientset.CoreV1().Pods(workloadNamespace.(string)).List(ctx, metav1.ListOptions{
-		LabelSelector: labels.Set(selectorLabels).String(),
-	})
+	labelSelector := labels.Set(selectorLabels).String()
+	// We use labelSelector to either get (1) the workload's pods or (2) the surge buffer workload's pods
+	if strings.HasSuffix(workload["metadata"].(map[string]interface{})["name"].(string), "surge-buffer") {
+		labelSelector += "," + utils.PodLabelSurgeBufferPod + "=true"
+	} else {
+		labelSelector += "," + utils.PodLabelSurgeBufferPod + "!=true"
+	}
+	podList, err := clientset.CoreV1().Pods(workloadNamespace.(string)).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		log.Error("Error getting pods for workload", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
 		return nil, err

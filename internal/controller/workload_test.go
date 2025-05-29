@@ -147,3 +147,77 @@ func TestWorkloadPodsAreHealthy(t *testing.T) {
 		t.Errorf("expected pods to be unhealthy when not running")
 	}
 }
+
+func TestGetTargetWorkloadPods_SurgeBufferLabelSelection(t *testing.T) {
+	ctx := context.Background()
+	selectorLabels := map[string]interface{}{"app": "myapp"}
+
+	// Pod with selectorLabels only
+	pod1 := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod1",
+			Namespace: "default",
+			Labels:    map[string]string{"app": "myapp"},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+	// Pod with selectorLabels and surge buffer label
+	pod2 := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod2",
+			Namespace: "default",
+			Labels:    map[string]string{"app": "myapp", utils.PodLabelSurgeBufferPod: "true"},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+
+	client := fake.NewSimpleClientset(pod1, pod2)
+
+	// Workload that is NOT a surge-buffer (should exclude surge buffer pods)
+	workload := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"name":      "mydeployment",
+			"namespace": "default",
+		},
+		"spec": map[string]interface{}{
+			"selector": map[string]interface{}{
+				"matchLabels": selectorLabels,
+			},
+		},
+	}
+	pods, err := getTargetWorkloadPods(ctx, workload, client)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pods.Items) != 1 || pods.Items[0].Name != "pod1" {
+		t.Errorf("expected only pod1 (non-surge-buffer), got: %v", podNames(pods.Items))
+	}
+
+	// Workload that IS a surge-buffer (should select only surge buffer pods)
+	workloadSurge := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"name":      "mydeployment-surge-buffer",
+			"namespace": "default",
+		},
+		"spec": map[string]interface{}{
+			"selector": map[string]interface{}{
+				"matchLabels": selectorLabels,
+			},
+		},
+	}
+	podsSurge, err := getTargetWorkloadPods(ctx, workloadSurge, client)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(podsSurge.Items) != 1 || podsSurge.Items[0].Name != "pod2" {
+		t.Errorf("expected only pod2 (surge-buffer), got: %v", podNames(podsSurge.Items))
+	}
+}
+
+func podNames(pods []corev1.Pod) []string {
+	names := make([]string, len(pods))
+	for i, p := range pods {
+		names[i] = p.Name
+	}
+	return names
+}
