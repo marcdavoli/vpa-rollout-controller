@@ -99,6 +99,7 @@ func main() {
 					continue
 				}
 				log.Info("Pending rollout triggered", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+				continue
 			}
 
 			// Check if an in-progress rollout is completed
@@ -133,6 +134,7 @@ func main() {
 				// Set the VPA's rollout status to "complete"
 				c.SetRolloutStatus(ctx, vpa, dynamicClient, patchOperationFieldManager, "complete")
 				log.Info("Rollout completed for VPA", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+				continue
 			}
 
 			// Check if the cooldown period has elapsed
