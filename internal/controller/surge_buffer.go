@@ -66,20 +66,36 @@ func CreateSurgeBufferWorkload(ctx context.Context, dynamicClient dynamic.Interf
 	surgeBufferMetadata := make(map[string]interface{})
 	surgeBufferMetadata["name"] = fmt.Sprintf("%s-surge-buffer", workloadName)
 	surgeBufferMetadata["namespace"] = workloadNamespace
-	// Merge existing annotations with surge-buffer annotations
-	annotations := make(map[string]interface{})
-	err = mergo.Merge(&annotations, surgeBufferWorkload["metadata"].(map[string]interface{})["annotations"].(map[string]interface{}))
-	if err != nil {
-		log.Error("Error merging annotations for surge buffer workload", "err", err, "WorkloadName", workloadName)
-		return fmt.Errorf("error merging annotations for surge buffer workload: %v", err)
+	// Merge existing annotations with surge buffer-specific annotations
+	mergedAnnotations := make(map[string]interface{})
+	if metadata, ok := surgeBufferWorkload["metadata"].(map[string]interface{}); ok {
+		if annotations, ok := metadata["annotations"].(map[string]interface{}); ok && annotations != nil {
+			err = mergo.Merge(&mergedAnnotations, annotations)
+			if err != nil {
+				log.Error("Error merging annotations for surge buffer workload", "err", err, "WorkloadName", workloadName)
+				return fmt.Errorf("error merging annotations for surge buffer workload: %v", err)
+			}
+		}
 	}
-	err = mergo.Merge(&annotations, utils.SurgeBufferPodAnnotations)
+	err = mergo.Merge(&mergedAnnotations, utils.SurgeBufferPodAnnotations)
 	if err != nil {
 		log.Error("Error merging surge buffer pod annotations", "err", err, "WorkloadName", workloadName)
 		return fmt.Errorf("error merging surge buffer pod annotations: %v", err)
 	}
-	surgeBufferMetadata["annotations"] = annotations
-	surgeBufferMetadata["labels"] = surgeBufferWorkload["metadata"].(map[string]interface{})["labels"]
+
+	// Merge existing labels
+	mergedLabels := make(map[string]interface{})
+	if metadata, ok := surgeBufferWorkload["metadata"].(map[string]interface{}); ok {
+		if labels, ok := metadata["labels"].(map[string]interface{}); ok && labels != nil {
+			err = mergo.Merge(&mergedLabels, labels)
+			if err != nil {
+				log.Error("Error merging labels for surge buffer workload", "err", err, "WorkloadName", workloadName)
+				return fmt.Errorf("error merging labels for surge buffer workload: %v", err)
+			}
+		}
+	}
+	surgeBufferMetadata["annotations"] = mergedAnnotations
+	surgeBufferMetadata["labels"] = mergedLabels
 	surgeBufferWorkload["metadata"] = surgeBufferMetadata
 	// Only override a few fields in the "spec", since we want to keep the rest of the workload as is
 	surgeBufferWorkload["spec"].(map[string]interface{})["replicas"] = surgeBufferReplicasInt
@@ -143,4 +159,34 @@ func DeleteSurgeBufferWorkload(ctx context.Context, dynamicClient dynamic.Interf
 	log.Info("Deleted surge buffer workload", "SurgeBufferWorkloadName", surgeBufferWorkloadName, "WorkloadName", workloadName)
 
 	return nil
+}
+
+// Check if the surge buffer workload exists for the VPA target workload.
+// This is used to determine if the surge buffer workload needs to be created or deleted.
+func SurgeBufferWorkloadExists(ctx context.Context, dynamicClient dynamic.Interface, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}) (bool, error) {
+	log := slog.Default()
+
+	workloadName := workload["metadata"].(map[string]interface{})["name"]
+	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
+
+	surgeBufferWorkloadName := fmt.Sprintf("%s-surge-buffer", workloadName)
+
+	gvr := schema.GroupVersionResource{
+		Group:    strings.SplitN(vpa.Spec.TargetRef.APIVersion, "/", 2)[0],
+		Version:  strings.SplitN(vpa.Spec.TargetRef.APIVersion, "/", 2)[1],
+		Resource: strings.ToLower(vpa.Spec.TargetRef.Kind + "s"),
+	}
+
+	_, err := dynamicClient.Resource(gvr).Namespace(workloadNamespace.(string)).Get(ctx, surgeBufferWorkloadName, metav1.GetOptions{})
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			log.Debug("Surge buffer workload does not exist", "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+			return false, nil
+		} else {
+			log.Error("Error checking if surge buffer workload exists", "err", err, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+			return false, fmt.Errorf("error checking if surge buffer workload exists: %v", err)
+		}
+	}
+
+	return true, nil
 }
