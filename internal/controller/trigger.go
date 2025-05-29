@@ -35,6 +35,7 @@ func TriggerRollout(ctx context.Context, workload map[string]interface{}, vpa v1
 		log.Info("Surge buffer workload created successfully", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
 		SetRolloutStatus(ctx, vpa, dynamicClient, patchOperationFieldManager, "pending")
 		log.Info("Set the VPA rollout status annotation to 'pending'", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return nil
 	}
 
 	err := triggerRolloutRestart(ctx, workload, dynamicClient, patchOperationFieldManager)
@@ -92,8 +93,8 @@ func triggerRolloutRestart(ctx context.Context, workload map[string]interface{},
 	if err != nil {
 		log.Error("Error triggering rollout on workload", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace, "Group", gvr.Group, "Version", gvr.Version, "Resource", gvr.Resource, "patchData", patchData)
 		return err
-	} else {
-		log.Info("Rollout triggered successfully", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "timestamp", currentTime)
 	}
+
+	log.Info("Rollout triggered successfully", "workloadName", workloadName, "workloadNamespace", workloadNamespace, "timestamp", currentTime)
 	return nil
 }

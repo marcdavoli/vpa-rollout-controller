@@ -124,11 +124,11 @@ func SetRolloutStatus(ctx context.Context, vpa v1.VerticalPodAutoscaler, dynamic
 	}
 	_, err := dynamicClient.Resource(gvr).Namespace(vpa.Namespace).Patch(ctx, vpa.Name, types.MergePatchType, []byte(patchData), metav1.PatchOptions{FieldManager: patchOperationFieldManager})
 	if err != nil {
-		log.Error("Error triggering pending rollout for workload", "err", err, "vpaName", vpa.Name, "vpaNamespace", vpa.Namespace)
-		return fmt.Errorf("error triggering pending rollout for workload %s: %v", vpa.Name, err)
+		log.Error("Error setting rollout status for workload", "err", err, "vpaName", vpa.Name, "vpaNamespace", vpa.Namespace, "status", status)
+		return fmt.Errorf("error setting rollout status to '%s' for workload %s: %v", status, vpa.Name, err)
 	}
 
-	log.Info("Triggering pending rollout for workload", "VPA", vpa.Name, "VPA Namespace", vpa.Namespace)
+	log.Info("Set rollout status for workload", "VPA", vpa.Name, "VPA Namespace", vpa.Namespace, "Status", status)
 
 	return nil
 }
