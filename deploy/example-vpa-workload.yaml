@@ -7,6 +7,7 @@ metadata:
     vpa-rollout.influxdata.io/enabled: "true"
     vpa-rollout.influxdata.io/diff-percent-trigger: "15"
     vpa-rollout.influxdata.io/cooldown-period: "2m"
+    vpa-rollout.influxdata.io/surge-buffer-enabled: "true"
 spec:
   resourcePolicy:
     containerPolicies:
