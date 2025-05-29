@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"reflect"
 	"strings"
 
 	"github.com/influxdata/vpa-rollout-controller/pkg/utils"
@@ -104,34 +103,19 @@ func workloadPodsAreHealthy(ctx context.Context, workload map[string]interface{}
 		return false, nil
 	}
 
-	// Store the resources block for each container across all the pods
-	containerResourcesRequestsMap := make(map[string]corev1.ResourceList)
-
 	for _, pod := range podList.Items {
-		// If any of the pods are not in Running state, do not trigger a rollout
+		// Check if any of the pods are not in Running state
 		if pod.Status.Phase != corev1.PodRunning {
 			log.Info("At least one of the target workload's Pods is not in Running state", "podName", pod.Name, "podNamespace", pod.Namespace, "podStatus", pod.Status.Phase, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
 			return false, nil
 		}
-		// If one of the containers in the pod is not Ready, do not trigger a rollout
+		// Check if any of the containers in the pod are not Ready
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if !containerStatus.Ready {
 				log.Info("At least one of the target workload's Pods's containers is not Ready", "podName", pod.Name, "podNamespace", pod.Namespace, "containerName", containerStatus.Name, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
 				return false, nil
 			}
 		}
-
-		// If a given container doesn't have the same resource requests across all the pods, do not trigger a rollout
-		for _, container := range pod.Spec.Containers {
-			containerResourcesRequests := container.Resources.Requests
-			if containerResourcesRequestsMap[container.Name] != nil && !reflect.DeepEqual(containerResourcesRequestsMap[container.Name], containerResourcesRequests) {
-				log.Info("At least one of the target workload's Pods's containers has different resource requests", "podName", pod.Name, "podNamespace", pod.Namespace, "containerName", container.Name, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
-				return false, nil
-			}
-			containerResourcesRequestsMap[container.Name] = containerResourcesRequests
-		}
-
 	}
-
 	return true, nil
 }
