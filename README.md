@@ -95,7 +95,7 @@ rules:
 ## Concepts
 
 ### Surge Buffers
-For the workloads that require it, we can create a copy of the workload resource (StatefulSet, Deployment, etc.) that will serve as a buffer during the rollout. This solves the problem where with the Kubernetes Vertical Pod Autoscaler, your workload must operated with `n-1` pods for the duration of the rollout restart. The surge buffer acts as a +1, so your workload instead operates with `n` pods for the duration of the rollout restart.
+For the workloads that require it, we create a copy of the workload resource (StatefulSet, Deployment, etc.) that will serve as a buffer during the rollout. This solves the problem where with the Kubernetes Vertical Pod Autoscaler, your workload must operate with `n-1` pods for the duration of the rollout restart. The surge buffer acts as a temporary +1, so your workload instead operates with `n` pods for the duration of the rollout restart.
 
 For VPAs that configure it (via the annotation `vpa-rollout.influxdata.io/surge-buffer-enabled: true`), Surge Buffer Workloads are created before a rollout is triggered and are deleted shortly after the rollout is completed.
 
@@ -116,15 +116,15 @@ flowchart TD
     CheckEligible -->|No| NextVPA[Continue to Next VPA]
     NextVPA --> VPALoop
     
-    CheckEligible -->|Yes| CheckStatus{Check Rollout<br/>Status}
+    CheckEligible -->|Yes| CheckStatus{Rollout Status?}
     
-    CheckStatus -->|Pending| CheckBufferReady{Surge Buffer<br/>Ready?}
+    CheckStatus -->|pending| CheckBufferReady{Surge Buffer<br/>Ready?}
     CheckBufferReady -->|No| NextVPA
     CheckBufferReady -->|Yes| TriggerPending[Trigger Rollout]
     TriggerPending --> setstatusToInProgress[Set Rollout Status<br/>to 'in-progress']
     setstatusToInProgress --> NextVPA
     
-    CheckStatus -->|In-Progress| CheckCompleted{Rollout Has<br/>Completed?}
+    CheckStatus -->|in-progress| CheckCompleted{Rollout Has<br/>Completed?}
     CheckCompleted -->|No| NextVPA
     CheckCompleted -->|Yes| CleanupBuffer{Surge Buffer<br/>Exists?}
     CleanupBuffer -->|Yes| DeleteBuffer[Delete Surge Buffer]
@@ -132,7 +132,7 @@ flowchart TD
     DeleteBuffer --> SetComplete
     SetComplete --> NextVPA
     
-    CheckStatus -->|Complete or None| CheckCooldown{Cooldown Period<br/>Has Elapsed?}
+    CheckStatus -->|complete or none| CheckCooldown{Cooldown Period<br/>Has Elapsed?}
     
     CheckCooldown -->|No| NextVPA
     CheckCooldown -->|Yes| CheckRolloutNeeded{Rollout Is<br/>Needed?}
