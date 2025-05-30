@@ -166,7 +166,7 @@ func TestGetTargetWorkloadPods_SurgeBufferLabelSelection(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "pod2",
 			Namespace: "default",
-			Labels:    map[string]string{"app": "myapp", utils.PodLabelSurgeBufferPod: "true"},
+			Labels:    map[string]string{"app": "myapp", utils.LabelSurgeBuffer: "true"},
 		},
 		Status: corev1.PodStatus{Phase: corev1.PodRunning},
 	}

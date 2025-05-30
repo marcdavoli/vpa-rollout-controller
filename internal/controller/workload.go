@@ -70,9 +70,9 @@ func getTargetWorkloadPods(ctx context.Context, workload map[string]interface{},
 	labelSelector := labels.Set(selectorLabels).String()
 	// We use labelSelector to either get (1) the workload's pods or (2) the surge buffer workload's pods
 	if strings.HasSuffix(workloadName.(string), "surge-buffer") {
-		labelSelector += "," + utils.PodLabelSurgeBufferPod + "=true"
+		labelSelector += "," + utils.LabelSurgeBuffer + "=true"
 	} else {
-		labelSelector += "," + utils.PodLabelSurgeBufferPod + "!=true"
+		labelSelector += "," + utils.LabelSurgeBuffer + "!=true"
 	}
 	podList, err := clientset.CoreV1().Pods(workloadNamespace.(string)).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {

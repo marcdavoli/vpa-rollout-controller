@@ -24,11 +24,14 @@ const (
 	DefaultSurgeBufferReplicas = "1"
 
 	// Label to indicate that the Pod is a "surge-buffer" pod
-	PodLabelSurgeBufferPod = "vpa-rollout.influxdata.io/surge-buffer"
+	LabelSurgeBuffer = "vpa-rollout.influxdata.io/surge-buffer"
 )
 
 var (
-	SurgeBufferPodAnnotations = map[string]interface{}{
-		"cluster-autoscaler.kubernetes.io/safe-to-evict": "false", // Prevent cluster autoscaler from evicting this pod
+	SurgeBufferPodAnnotations = map[string]string{
+		"cluster-autoscaler.kubernetes.io/safe-to-evict": "false", // Prevent cluster-autoscaler from evicting this pod
 	}
+	SurgeBufferPodLabels           = map[string]string{LabelSurgeBuffer: "true"}
+	SurgeBufferWorkloadAnnotations = map[string]string{}
+	SurgeBufferWorkloadLabels      = map[string]string{LabelSurgeBuffer: "true"}
 )
