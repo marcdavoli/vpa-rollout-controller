@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"dario.cat/mergo"
 	"github.com/influxdata/vpa-rollout-controller/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -17,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	v1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Create a "surge buffer" workload resource, which is a copy of the target workload with the resource requests overridden to match the VPA recommendation.
@@ -66,46 +66,43 @@ func CreateSurgeBufferWorkload(ctx context.Context, dynamicClient dynamic.Interf
 	surgeBufferMetadata := make(map[string]interface{})
 	surgeBufferMetadata["name"] = fmt.Sprintf("%s-surge-buffer", workloadName)
 	surgeBufferMetadata["namespace"] = workloadNamespace
-	// Merge existing annotations with surge buffer-specific annotations
-	mergedAnnotations := make(map[string]interface{})
-	if metadata, ok := surgeBufferWorkload["metadata"].(map[string]interface{}); ok {
-		if annotations, ok := metadata["annotations"].(map[string]interface{}); ok && annotations != nil {
-			err = mergo.Merge(&mergedAnnotations, annotations)
-			if err != nil {
-				log.Error("Error merging annotations for surge buffer workload", "err", err, "WorkloadName", workloadName)
-				return fmt.Errorf("error merging annotations for surge buffer workload: %v", err)
-			}
-		}
+	// Add surge buffer-specific annotations
+	surgeBufferMetadata["annotations"] = make(map[string]interface{})
+	for key, value := range utils.SurgeBufferWorkloadAnnotations {
+		surgeBufferMetadata["annotations"].(map[string]interface{})[key] = value
 	}
-	err = mergo.Merge(&mergedAnnotations, utils.SurgeBufferPodAnnotations)
-	if err != nil {
-		log.Error("Error merging surge buffer pod annotations", "err", err, "WorkloadName", workloadName)
-		return fmt.Errorf("error merging surge buffer pod annotations: %v", err)
+	// Add surge buffer-specific labels
+	surgeBufferMetadata["labels"] = make(map[string]interface{})
+	for key, value := range utils.SurgeBufferWorkloadLabels {
+		surgeBufferMetadata["labels"].(map[string]interface{})[key] = value
 	}
-
-	// Merge existing labels
-	mergedLabels := make(map[string]interface{})
-	if metadata, ok := surgeBufferWorkload["metadata"].(map[string]interface{}); ok {
-		if labels, ok := metadata["labels"].(map[string]interface{}); ok && labels != nil {
-			err = mergo.Merge(&mergedLabels, labels)
-			if err != nil {
-				log.Error("Error merging labels for surge buffer workload", "err", err, "WorkloadName", workloadName)
-				return fmt.Errorf("error merging labels for surge buffer workload: %v", err)
-			}
-		}
-	}
-	surgeBufferMetadata["annotations"] = mergedAnnotations
-	surgeBufferMetadata["labels"] = mergedLabels
+	log.Debug("Creating surge buffer workload", "WorkloadName", workloadName, "SurgeBufferWorkloadName", surgeBufferMetadata["name"], "WorkloadNamespace", workloadNamespace, "SurgeBufferReplicas", surgeBufferReplicasInt)
 	surgeBufferWorkload["metadata"] = surgeBufferMetadata
+
 	// Only override a few fields in the "spec", since we want to keep the rest of the workload as is
+	// Set the "replicas" field to the number of surge buffer pods
 	surgeBufferWorkload["spec"].(map[string]interface{})["replicas"] = surgeBufferReplicasInt
+	// Add the "surge-buffer" annotation and labels to the pod template
+	podTemplate := surgeBufferWorkload["spec"].(map[string]interface{})["template"].(map[string]interface{})
+	for key, value := range utils.SurgeBufferPodAnnotations {
+		if podTemplate["metadata"].(map[string]interface{})["annotations"] == nil {
+			podTemplate["metadata"].(map[string]interface{})["annotations"] = make(map[string]interface{})
+		}
+		podTemplate["metadata"].(map[string]interface{})["annotations"].(map[string]interface{})[key] = value
+	}
+	for key, value := range utils.SurgeBufferPodLabels {
+		if podTemplate["metadata"].(map[string]interface{})["labels"] == nil {
+			podTemplate["metadata"].(map[string]interface{})["labels"] = make(map[string]interface{})
+		}
+		podTemplate["metadata"].(map[string]interface{})["labels"].(map[string]interface{})[key] = value
+	}
 	// Override the resource requests in the podTemplate with the VPA recommendation
 	for i, container := range surgeBufferWorkload["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["containers"].([]interface{}) {
 		for containerName := range vpaRecommendationRequests["cpu"] {
 			if containerName == container.(map[string]interface{})["name"] {
-				surgeBufferWorkload["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["containers"].([]interface{})[i].(map[string]interface{})["resources"].(map[string]interface{})["requests"].(map[string]interface{})[string(corev1.ResourceCPU)] = vpaRecommendationRequests["cpu"][containerName].String()
-				surgeBufferWorkload["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["containers"].([]interface{})[i].(map[string]interface{})["resources"].(map[string]interface{})["requests"].(map[string]interface{})[string(corev1.ResourceMemory)] = vpaRecommendationRequests["memory"][containerName].String()
-				surgeBufferWorkload["spec"].(map[string]interface{})["template"].(map[string]interface{})["spec"].(map[string]interface{})["containers"].([]interface{})[i].(map[string]interface{})["resources"].(map[string]interface{})["limits"].(map[string]interface{})[string(corev1.ResourceMemory)] = vpaRecommendationRequests["memory"][containerName].String()
+				podTemplate["spec"].(map[string]interface{})["containers"].([]interface{})[i].(map[string]interface{})["resources"].(map[string]interface{})["requests"].(map[string]interface{})[string(corev1.ResourceCPU)] = vpaRecommendationRequests["cpu"][containerName].String()
+				podTemplate["spec"].(map[string]interface{})["containers"].([]interface{})[i].(map[string]interface{})["resources"].(map[string]interface{})["requests"].(map[string]interface{})[string(corev1.ResourceMemory)] = vpaRecommendationRequests["memory"][containerName].String()
+				podTemplate["spec"].(map[string]interface{})["containers"].([]interface{})[i].(map[string]interface{})["resources"].(map[string]interface{})["limits"].(map[string]interface{})[string(corev1.ResourceMemory)] = vpaRecommendationRequests["memory"][containerName].String()
 			}
 		}
 
@@ -127,7 +124,7 @@ func CreateSurgeBufferWorkload(ctx context.Context, dynamicClient dynamic.Interf
 		return fmt.Errorf("error creating surge buffer workload: %v", err)
 	}
 
-	log.Info("Created surge buffer pod from workload template", "WorkloadName", workloadName, "SurgeWorkload", surgeBufferWorkload)
+	log.Info("Created surge buffer workload", "WorkloadName", workloadName, "SurgeWorkload", surgeBufferWorkload)
 
 	return nil
 
@@ -161,9 +158,13 @@ func DeleteSurgeBufferWorkload(ctx context.Context, dynamicClient dynamic.Interf
 	return nil
 }
 
-// Check if the surge buffer workload exists for the VPA target workload.
-// This is used to determine if the surge buffer workload needs to be created or deleted.
-func SurgeBufferWorkloadExists(ctx context.Context, dynamicClient dynamic.Interface, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}) (bool, error) {
+// Returns the status of the surge buffer workload.
+// It returns :
+// - "Ready" if the workload is healthy (based on workloadPodsAreHealthy function)
+// - "NotReady" if the workload is not healthy (based on workloadPodsAreHealthy function)
+// - "NotFound" if the  workload does not exist
+// - "Error" if there was an error checking the workload status
+func GetSurgeBufferWorkloadStatus(ctx context.Context, dynamicClient dynamic.Interface, clientset kubernetes.Interface, vpa v1.VerticalPodAutoscaler, workload map[string]interface{}) (string, error) {
 	log := slog.Default()
 
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
@@ -177,16 +178,26 @@ func SurgeBufferWorkloadExists(ctx context.Context, dynamicClient dynamic.Interf
 		Resource: strings.ToLower(vpa.Spec.TargetRef.Kind + "s"),
 	}
 
-	_, err := dynamicClient.Resource(gvr).Namespace(workloadNamespace.(string)).Get(ctx, surgeBufferWorkloadName, metav1.GetOptions{})
+	sbwObject, err := dynamicClient.Resource(gvr).Namespace(workloadNamespace.(string)).Get(ctx, surgeBufferWorkloadName, metav1.GetOptions{})
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			log.Debug("Surge buffer workload does not exist", "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
-			return false, nil
+			return "NotFound", nil
 		} else {
 			log.Error("Error checking if surge buffer workload exists", "err", err, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
-			return false, fmt.Errorf("error checking if surge buffer workload exists: %v", err)
+			return "Error", fmt.Errorf("error checking if surge buffer workload exists: %v", err)
 		}
 	}
+	// Check if the surge buffer workload is healthy
+	healthy, err := workloadPodsAreHealthy(ctx, sbwObject.UnstructuredContent(), clientset)
+	if err != nil {
+		log.Error("Error checking workload pods health", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return "Error", err
+	}
+	if !healthy {
+		log.Info("Workload pods are not healthy, skipping rollout", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return "NotReady", nil
+	}
 
-	return true, nil
+	return "Ready", nil
 }

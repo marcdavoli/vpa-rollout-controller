@@ -90,10 +90,19 @@ func main() {
 			if rolloutStatus == "pending" {
 				log.Info("Rollout is pending for VPA", "VPAName", vpa.Name, "VPANamespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
 
-				// Check if surge buffer is ready
+				// Check if the surge buffer workload is ready
+				surgeBufferWorkloadStatus, err := c.GetSurgeBufferWorkloadStatus(ctx, dynamicClient, clientset, vpa, workload)
+				if err != nil {
+					log.Error("Error checking if surge buffer workload exists", "err", err, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+					continue
+				}
+				if surgeBufferWorkloadStatus != "Ready" {
+					log.Info("Surge buffer workload is not ready, skipping", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace, "SurgeBufferWorkloadStatus", surgeBufferWorkloadStatus)
+					continue
+				}
 
-				// If it is, trigger the rollout restart and change the VPA's rollout status to "in-progress"
-				err := c.TriggerPendingRollout(ctx, vpa, workload, dynamicClient, patchOperationFieldManager)
+				// Trigger the rollout restart and set the VPA's rollout status to "in-progress"
+				err = c.TriggerPendingRollout(ctx, vpa, workload, dynamicClient, patchOperationFieldManager)
 				if err != nil {
 					log.Error("Error triggering pending rollout", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 					continue
@@ -101,7 +110,6 @@ func main() {
 				log.Info("Pending rollout triggered", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 				continue
 			}
-
 			// Check if an in-progress rollout is completed
 			if rolloutStatus == "in-progress" {
 				// Check if the workload pods are healthy and have restarted since the last rollout
@@ -115,14 +123,15 @@ func main() {
 					continue
 				}
 
-				// Cleanup the buffer workload if it exists
-				surgeBufferWorkloadExists, err := c.SurgeBufferWorkloadExists(ctx, dynamicClient, vpa, workload)
+				// Cleanup the buffer workload if it exists and is ready
+				// If its status is "NotFound", we implicitly skip this step
+				surgeBufferWorkloadStatus, err := c.GetSurgeBufferWorkloadStatus(ctx, dynamicClient, clientset, vpa, workload)
 				if err != nil {
-					log.Error("Error checking if surge buffer workload exists", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+					log.Error("Error getting surge buffer workload status", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 					continue
 				}
-				if surgeBufferWorkloadExists {
-					log.Info("Surge buffer workload exists, deleting it", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
+				if surgeBufferWorkloadStatus == "Ready" {
+					log.Info("Deleting the surge buffer workload", "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
 					err := c.DeleteSurgeBufferWorkload(ctx, dynamicClient, vpa, workload)
 					if err != nil {
 						log.Error("Error deleting surge buffer workload", "err", err, "VPAName", vpa.Name, "WorkloadName", workloadName, "WorkloadNamespace", workloadNamespace)
