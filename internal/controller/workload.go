@@ -69,7 +69,7 @@ func getTargetWorkloadPods(ctx context.Context, workload map[string]interface{},
 
 	labelSelector := labels.Set(selectorLabels).String()
 	// We use labelSelector to either get (1) the workload's pods or (2) the surge buffer workload's pods
-	if strings.HasSuffix(workload["metadata"].(map[string]interface{})["name"].(string), "surge-buffer") {
+	if strings.HasSuffix(workloadName.(string), "surge-buffer") {
 		labelSelector += "," + utils.PodLabelSurgeBufferPod + "=true"
 	} else {
 		labelSelector += "," + utils.PodLabelSurgeBufferPod + "!=true"
@@ -89,6 +89,7 @@ func workloadPodsAreHealthy(ctx context.Context, workload map[string]interface{}
 	log := slog.Default()
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
 	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
+	workloadReplicas := workload["spec"].(map[string]interface{})["replicas"]
 
 	// Get the list of pods for the target workload
 	podList, err := getTargetWorkloadPods(ctx, workload, clientset)
@@ -100,6 +101,12 @@ func workloadPodsAreHealthy(ctx context.Context, workload map[string]interface{}
 	// Ensure there are pods before proceeding
 	if len(podList.Items) == 0 {
 		log.Info("No pods found for workload", "workloadName", workloadName, "workloadNamespace", workloadNamespace)
+		return false, nil
+	}
+
+	// Check if the number of pods matches the expected replicas
+	if workloadReplicas != nil && len(podList.Items) != int(workloadReplicas.(int64)) {
+		log.Info("Number of pods does not match expected replicas", "podCount", len(podList.Items), "expectedReplicas", workloadReplicas, "workloadName", workloadName, "workloadNamespace", workloadNamespace)
 		return false, nil
 	}
 
