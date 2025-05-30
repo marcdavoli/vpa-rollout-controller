@@ -26,6 +26,8 @@ func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 	workloadName := workload["metadata"].(map[string]interface{})["name"]
 	workloadNamespace := workload["metadata"].(map[string]interface{})["namespace"]
 
+	rolloutNeeded := false
+
 	// Ensure the workload's pods are healthy before proceeding
 	healthy, err := workloadPodsAreHealthy(ctx, workload, clientset)
 	if err != nil {
@@ -63,45 +65,46 @@ func RolloutIsNeeded(ctx context.Context, clientset kubernetes.Interface, vpa v1
 						log.Error("Error getting pods for workload", "error", err.Error(), "workloadName", workloadName, "workloadNamespace", workloadNamespace)
 						return false, err
 					}
-					// We can pick the first pod in the list, since we've previously verified that the 'resources' block is the same across all pods
-					pod := podList.Items[0]
-					var containerCPU, containerMemory *resource.Quantity
-					for _, container := range pod.Spec.Containers {
-						if container.Name == recommendation.ContainerName {
-							containerResources := container.Resources
-							containerCPU = containerResources.Requests.Cpu()
-							containerMemory = containerResources.Requests.Memory()
-							log.Debug("Container Spec values", "vpaName", vpa.Name, "vpaNamespace", vpa.Namespace, "podName", pod.Name, "ContainerName", container.Name, "ContainerCPURequests", containerCPU.String(), "ContainerMemoryRequests", containerMemory.String())
+					// Check if any of the workload's pods need a rollout based on the VPA recommendation
+
+					for _, pod := range podList.Items {
+						var containerCPU, containerMemory *resource.Quantity
+						for _, container := range pod.Spec.Containers {
+							if container.Name == recommendation.ContainerName {
+								containerResources := container.Resources
+								containerCPU = containerResources.Requests.Cpu()
+								containerMemory = containerResources.Requests.Memory()
+								log.Debug("Container Spec values", "vpaName", vpa.Name, "vpaNamespace", vpa.Namespace, "podName", pod.Name, "ContainerName", container.Name, "ContainerCPURequests", containerCPU.String(), "ContainerMemoryRequests", containerMemory.String())
+							}
+						}
+
+						// Get the target CPU and Memory request from the VPA recommendation
+						vpaTargetCpuQuantity, _ := resource.ParseQuantity(recommendation.Target.Cpu().String())
+						vpaTargetMemoryQuantity, _ := resource.ParseQuantity(recommendation.Target.Memory().String())
+						log.Debug("VPA Status values", "VpaTargetCpuQuantity", vpaTargetCpuQuantity.String(), "VpaTargetMemoryQuantity", vpaTargetMemoryQuantity.String())
+						// Calculate the difference between current and target CPU and Memory requests
+						cpuDiff := math.Abs(containerCPU.AsApproximateFloat64() - vpaTargetCpuQuantity.AsApproximateFloat64())
+						cpuDiffPercent := cpuDiff / vpaTargetCpuQuantity.AsApproximateFloat64() * 100
+						memoryDiff := math.Abs(containerMemory.AsApproximateFloat64() - vpaTargetMemoryQuantity.AsApproximateFloat64())
+						memoryDiffPercent := memoryDiff / vpaTargetMemoryQuantity.AsApproximateFloat64() * 100
+						log.Debug("Calculated diff between VPA Resource Target and Workload Resources", "CPUDiff", cpuDiff, "CPUDiffPercent", cpuDiffPercent, "MemoryDiff", memoryDiff, "MemoryDiffPercent", memoryDiffPercent)
+
+						// If difference between current and target CPU or Memory is greater than the threshold, trigger a rollout
+						if cpuDiffPercent > float64(effectiveDiffPercentTrigger) || memoryDiffPercent > float64(effectiveDiffPercentTrigger) {
+							log.Info("Rollout needed for VPA Target Workload", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name, "cpuDiffPercent", cpuDiffPercent, "memoryDiffPercent", memoryDiffPercent, "diffPercentTrigger", effectiveDiffPercentTrigger)
+							rolloutNeeded = true
+							break
 						}
 					}
-
-					// Get the target CPU and Memory request from the VPA recommendation
-					vpaTargetCpuQuantity, _ := resource.ParseQuantity(recommendation.Target.Cpu().String())
-					vpaTargetMemoryQuantity, _ := resource.ParseQuantity(recommendation.Target.Memory().String())
-					log.Debug("VPA Status values", "VpaTargetCpuQuantity", vpaTargetCpuQuantity.String(), "VpaTargetMemoryQuantity", vpaTargetMemoryQuantity.String())
-					// Calculate the difference between current and target CPU and Memory requests
-					cpuDiff := math.Abs(containerCPU.AsApproximateFloat64() - vpaTargetCpuQuantity.AsApproximateFloat64())
-					cpuDiffPercent := cpuDiff / vpaTargetCpuQuantity.AsApproximateFloat64() * 100
-					memoryDiff := math.Abs(containerMemory.AsApproximateFloat64() - vpaTargetMemoryQuantity.AsApproximateFloat64())
-					memoryDiffPercent := memoryDiff / vpaTargetMemoryQuantity.AsApproximateFloat64() * 100
-					log.Debug("Calculated diff between VPA Resource Target and Workload Resources", "CPUDiff", cpuDiff, "CPUDiffPercent", cpuDiffPercent, "MemoryDiff", memoryDiff, "MemoryDiffPercent", memoryDiffPercent)
-
-					// If difference between current and target CPU or Memory is greater than the threshold, trigger a rollout
-					if cpuDiffPercent > float64(effectiveDiffPercentTrigger) || memoryDiffPercent > float64(effectiveDiffPercentTrigger) {
-						log.Info("Rollout needed for VPA Target Workload", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name, "cpuDiffPercent", cpuDiffPercent, "memoryDiffPercent", memoryDiffPercent, "diffPercentTrigger", effectiveDiffPercentTrigger)
-						return true, nil
-					} else {
-						log.Info("No rollout needed for VPA Target Workload", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
-						return false, nil
-					}
+					return rolloutNeeded, nil
 				}
 			}
 		}
 	} else {
 		log.Debug("No recommendation for VPA", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
-		return false, nil
+		return rolloutNeeded, nil
 	}
-	return false, fmt.Errorf("error verifying if rollout is needed for VPA %s", vpa.Name)
+	return rolloutNeeded, fmt.Errorf("error verifying if rollout is needed for VPA %s", vpa.Name)
 }
 
 // Get the current rollout status of the VPA from its annotation

@@ -166,6 +166,7 @@ func main() {
 						continue
 					}
 				}
+				log.Info("No rollout needed for VPA Target Workload", "Name", vpa.Name, "Namespace", vpa.Namespace, "WorkloadKind", vpa.Spec.TargetRef.Kind, "WorkloadName", vpa.Spec.TargetRef.Name)
 			}
 		}
 
